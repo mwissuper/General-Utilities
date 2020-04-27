@@ -32,11 +32,12 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanPosPowerIntPtY','meanNegPowerIntPtY',...
     'meanPosPowerIntPtZ','meanNegPowerIntPtZ',...
     'meanAbsPowerIntPtX','meanAbsPowerIntPtY','meanAbsPowerIntPtZ',... 
+    'SDAbsPowerIntPtX','SDAbsPowerIntPtY','SDAbsPowerIntPtZ',...
     'meanPosFx','meanNegFx','SDPosFx','SDNegFx',... % Force metrics
     'meanPosFy','meanNegFy','SDPosFy','SDNegFy',...
     'meanPosFz','meanNegFz','SDPosFz','SDNegFz',...
     'meanFx','meanFy','meanFz',... % mean of force mag (abs force)
-    'SDFx','SDFy','SDFz',... % SD of net force (pos and neg combined)
+    'SDFx','SDFy','SDFz',... % SD of abs force 
     'rPowerFresX',... % correlation power and force model residual in x/ML dir
     'meanPosVx','meanNegVx','meanVx',... % Vel int pt metrics
     'meanPosVy','meanNegVy','meanVy',...
@@ -44,6 +45,8 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanVx_clav','meanVy_clav','meanVz_clav',... % Vel clav metrics
     'mx_clav','bx_clav','kx_clav','my_clav','by_clav','ky_clav','mz_clav','bz_clav','kz_clav',...% regression coeff's of rFin marker acc, vel, pos to force in each dir
     'Rsqx_clav','Rsqy_clav','Rsqz_clav',...% Rsq of fit of regression above
+    'lagFIPvClavX','xcorrFIPvClavX','lagvIPvClavX','xcorrvIPvClavX','xcorrFIPClavX','lagFIPClavX',...% xcorr of IP signals to POB Clav signals to see if hand interaction lags/leads balance changes
+    'meanArmPOBX','SDarmPOBX'... % Magnitude of vector from 
     'StdSway','Dist','AvgSpeed',...% Other kinem metrics
     'Complete','Notes'}; 
 
@@ -72,6 +75,7 @@ blank = {nan,nan,'',...
     nan,nan,...
     nan,nan,...
     nan,nan,nan,...
+    nan,nan,nan,...
     nan,nan,nan,nan,... % force
     nan,nan,nan,nan,...
     nan,nan,nan,nan,...
@@ -84,6 +88,8 @@ blank = {nan,nan,'',...
     nan,nan,nan,...% vel clav
     nan,nan,nan,nan,nan,nan,nan,nan,nan,...% regression clav
     nan,nan,nan,...% R^2 regression clav
+    nan,nan,nan,nan,nan,nan,...% xcorr of IP signals to POB Clav signals to see if hand interaction lags/leads balance changes
+    nan,nan,...% POB arm "length" mean and SD in ML dir
     nan,nan,nan,...% other kinem's
     true,' '};
 % Filter out the STAT trials
@@ -162,14 +168,17 @@ for n = 1:numTrials
             NegPower = TrialData(n).Results.IntPower(indNeg,i);
             if i == 1
                 stats.meanAbsPowerIntPtX(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                stats.SDAbsPowerIntPtX(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
                 stats.meanPosPowerIntPtX(n) = nanmean(PosPower);
                 stats.meanNegPowerIntPtX(n) = nanmean(NegPower);
             elseif i == 2
                 stats.meanAbsPowerIntPtY(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                stats.SDAbsPowerIntPtY(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
                 stats.meanPosPowerIntPtY(n) = nanmean(PosPower);
                 stats.meanNegPowerIntPtY(n) = nanmean(NegPower);
             else
                 stats.meanAbsPowerIntPtZ(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                stats.SDAbsPowerIntPtZ(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
                 stats.meanPosPowerIntPtZ(n) = nanmean(PosPower);
                 stats.meanNegPowerIntPtZ(n) = nanmean(NegPower);
             end
@@ -363,13 +372,19 @@ for n = 1:numTrials
                 
             %% Additional metrics that depend on force data
             
-            %% Cross-correlation of force to displacement in ML and Vert. dir's
-            stats.xcorrX(n) = TrialData(n).Results.xcorrX;
-            stats.lagX(n) = TrialData(n).Results.lagX;
-            stats.xcorrZ(n) = TrialData(n).Results.xcorrZ;
-            stats.lagZ(n) = TrialData(n).Results.lagZ;
+            %% Cross-correlation of IP signals to POB Clav signals to see if interaction lags/leads balance (ML dir only)
+            stats.xcorrFIPClavX(n) = TrialData(n).Results.xcorrFIPClavX;
+            stats.lagFIPClavX(n) = TrialData(n).Results.lagFIPClavX;
+            stats.xcorrFIPvClavX(n) = TrialData(n).Results.xcorrFIPvClavX;
+            stats.lagFIPvClavX(n) = TrialData(n).Results.lagFIPvClavX;
+            stats.xcorrvIPvClavX(n) = TrialData(n).Results.xcorrvIPvClavX;
+            stats.lagvIPvClavX(n) = TrialData(n).Results.lagvIPvClavX;
             
-            % Correlation
+            %% Distance clav to IP in ML dir
+            stats.meanArmPOBX(n) = nanmean(TrialData(n).Results.armPOBX);
+            stats.SDarmPOBX(n) = nanstd(TrialData(n).Results.armPOBX);
+            
+            %% Correlation force to Clav or COM pos
             stats.rFvertClav(n) = TrialData(n).Results.rFvertClav; 
             stats.rFlatCOM(n) = TrialData(n).Results.rFlatCOM; 
             stats.rFvertCOM(n) = TrialData(n).Results.rFvertCOM;

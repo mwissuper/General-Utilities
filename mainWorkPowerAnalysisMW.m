@@ -52,10 +52,6 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
     %   at end of trial. MW 11/1/19
     distOffset = 250; % mm
     
-    %   MW made lots of changes to remove filtering on marker data and do
-    %   minimal filtering on force data. The marker data has likely been
-    %   filtered a great deal already through procbatch.
-    
     %% Initialization
     % Number of trials in the dataset:
     num_trials = length(TrialData);
@@ -66,6 +62,9 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
     % Field names for force and torque
     force_names = {'Fx','Fy','Fz'};
     torque_names = {'Mx','My','Mz'};
+    % Butterworth 3rd order lowpass filter, cutoff 10Hz
+    [z, p, k] = butter(3,10/50);
+    [sos, g] = zp2sos(z, p, k);
     
     % Mass of FT sensor
     mFT = 4/9.81; % (kg)
@@ -75,14 +74,6 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
         disp(['Processing ',TrialData(n).Info.Trial]);
         % Check for trials to process
         if any(strcmpi(TrialData(n).Info.Condition, to_process))
-            % Get sampling freq, set up filters
-            % Butterworth 3rd order lowpass filter, cutoff 20Hz for markers 60hz
-            % for force
-            fs = TrialData(n).Markers.samplerate;
-            [Bm,Am] = butter(3,20/(fs/2)); % Use only to filter vel before diff to get acc
-            fsa = TrialData(n).Forces.samplerate;
-            [Bf,Af] = butter(3,60/(fsa/2)); % Using this before downsample 
-            
             %% -- Compute start and stop time of the trial. --- %%
             
             % Median filter all of the marker data to remove jumps. Then
@@ -117,15 +108,27 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                     stop_idx = start_idx + 750;
                 end
             elseif subj == 10
+                
                 if strcmp(TrialData(n).Info.Trial,'Trial46')
                     stop_idx = start_idx + 450;
                 end
             end
 
             %Construct the time axis
+            sample_rate = TrialData(n).Markers.samplerate;
             time = 0:(stop_idx - start_idx);
-            time = time./fs;
+            time = time./sample_rate;
+            
+            % Calculations depending on force data
             if any(strcmpi(TrialData(n).Info.Condition, assisted))
+                % Find midline of beam for reference
+                if strcmpi(TrialData(n).Info.Condition, 'Assist Solo') % One person marker set
+                    TrialData(n).Results.beamMidline = nan ; % Don't bother getting midline for these trials
+                else % 2 person marker set 
+                    [trough, itrough] = findpeaks(-Markers.POB.LHEE(start_idx:end,3),'MinPeakProminence',range(Markers.POB.LHEE(start_idx:end,3)/5)); % find troughs after first peak
+                    TrialData(n).Results.indStepBeam = itrough(1) + start_idx - 1;
+                    TrialData(n).Results.beamMidline = Markers.POB.LHEE(TrialData(n).Results.indStepBeam,1)/1000; 
+                end
                 %% Window and Transpose Force and Marker Data %% 
                 % Now that we have the start and stop indices, we can get the
                 % force data and the marker data for the time when the subject
@@ -149,17 +152,20 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                         LFIN = nan;
                     end
                 end
-               
-                clear Force Torque F T
+
+                % Get the sampling rate for the forces                
+                force_rate = TrialData(n).Forces.samplerate;
+                
+                clear Force Torque
                 % Collect the forces and torques into the initialized arrays
                 for k = 1:3 % for each direction
-                    %Filter forces and torques before downsampling
-                    F = filtfilt(Bf,Af,TrialData(n).Forces.(force_names{k}));
-                    T = filtfilt(Bf,Af,TrialData(n).Forces.(torque_names{k}));
                     %Downsample the forces and torques to be at the same
                     %sampling rate as the marker data
-                    F = resample(F, fs, fsa);
-                    T = resample(T, fs, fsa);
+                    F = resample(TrialData(n).Forces.(force_names{k}), sample_rate, force_rate);
+                    T = resample(TrialData(n).Forces.(torque_names{k}), sample_rate, force_rate);
+                    % Median filter forces to reduce noise
+                    F = medfilt1(F);
+                    T = medfilt1(T);
                     % Limit the forces and torques to the same analysis window
                     % as the marker data
                     Force(:,k) = F(start_idx:stop_idx);
@@ -169,15 +175,14 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                 % Checked for all trials with avail video assist beam
                 % Fx volt is negative when in shear away from center of
                 % sensor, so must negate sign before processing. Also
-                % negative Fy volt bc that is consistent with setup for
+                % negate Fy volt bc that is consistent with setup for
                 % BL experiment fall 2019. Do this before recoverForces
                 % projects force signals into lab CS. 3/30/20 MW.
                 Force(:,1) = -Force(:,1);
                 Force(:,2) = -Force(:,2);
                 
                 if isfield(Markers,'FH')
-                    % Median filter force handle MARKERS to remove jumps.
-                    % These markers were not previously medfiltered
+                    % Median filter force handle MARKERS to remove jumps
                     FH = medfiltFields(TrialData(n).Markers.FH,1); % Tolerance check in later recoverForces code looks at mm so don't convert to m
                     % Get only the markers in the trial window
                     FH = windowMarkers(FH,start_idx,stop_idx);
@@ -197,37 +202,48 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                 % each direction (?)
                 
 %% --------------- WORK and POWER ANALYSIS ------------------------------%%
-                % Filter the force vector 
+                % Now, filter the force vector to obtain smooth
+                % results. This is old code from Luke. The RFIN data is
+                % double-filered here (already filtered in procBatch) before calculating power
                 clear rFin rFilt vFin vFilt aFin clav clavFilt vClav vClavFilt aClav RASIFilty armAsst armPOB POBpower
-
-                % Look at each direction separately. The signs are reversed for force
+                for k = 1:3
+                    Force(:,k) = filtfilt(sos, g, Force(:,k));
+                    rFilt(:,k) = filtfilt(sos, g, RFIN(:,k)); 
+                end
+                rFin = RFIN; % Don't double-filter!
+ 
+                % Look at each direction separately. Must filter before
+                % take deriv. Again, here the signs are reversed for force
                 % bc it's force on POB
-                vFin = diff(RFIN).*fs;
+                vFin = diff(rFilt).*sample_rate;
                 for i = 1:3
-                    intPt_power(:,i) = -Force(2:end,i).*vFin(:,i); % If Fx > 0, IP in shear with partners' force vectors away from each other. if vx > 0, IP is towards the POB on the right. By this convention, Px > 0 means brake. We want Px > 0 to mean motor
-                    intPt_cumWork(:,i) = cumsum(intPt_power(:,i))./fs;
-                    intPt_netWork_norm(i) = sum(intPt_power(:,i))/fs/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
+                    intPt_power(:,i) = -Force(2:end,i).*vFin(:,i); % Negating sign on force here so P > 0 for motor. Maybe not do this in future
+                    intPt_cumWork(:,i) = cumsum(intPt_power(:,i))./sample_rate;
+                    intPt_netWork_norm(i) = sum(intPt_power(:,i))/sample_rate/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
                 end
                 
                 %% Fit Fint to int pt disp, vel, acc data for each direction - old analysis. Not really useful. Fit Fint to clavicle is more interesting.
                 % Filter velocity before diff to get acc for intPt 
                 for i = 1:3
-                    vFilt(:,i) = filtfilt(Bm, Am, vFin(:,i));
+                    vFilt(:,i) = filtfilt(sos, g, vFin(:,i));
                 end
-                aFin = diff(vFilt).*fs;               
+                aFin = diff(vFilt).*sample_rate;               
                 
                 if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
                     %% Get POB clavicle state values
                     clav = Markers.POB.CLAV(start_idx:stop_idx,:)./1000;
+                    for k = 1:3
+                        clavFilt(:,k) = filtfilt(sos, g, clav(:,k)); % (m) % Use only for taking deriv.
+                    end
 
                     % Store clavicle pos for later analysis/plotting
                     TrialData(n).Results.CLAV = clav; % (m)
-                    vClav = diff(clav).*fs; 
+                    vClav = diff(clavFilt).*sample_rate; 
                     % Filter vel before take derivative
                     for k = 1:3
-                        vClavFilt(:,k) = filtfilt(Bm, Am, vClav(:,k));
+                        vClavFilt(:,k) = filtfilt(sos, g, vClav(:,k));
                     end
-                    aClav = diff(vClavFilt).*fs;
+                    aClav = diff(vClavFilt).*sample_rate;
                     % Store clavicle derivatives for later analysis/plotting
                     TrialData(n).Results.vCLAV = vClav;
                     TrialData(n).Results.aCLAV = aClav;
@@ -244,30 +260,24 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                     % Regress per direction. Regress
                     % iteratively, throwing away any variables with coeff's
                     % whose CI's include zero. For ML disp, look at clav
-                    % relative to beam midline, assumed we can get it from
+                    % relative to beam midline, which we get from
                     % starting ML pos of LHEE (code to get analysis window
                     % always looks at LHEE for start). Assume model acts to
                     % restore clav to middle of beam in ML dir and to clav
                     % height and sagittal pos at beg of trial. Must reverse
-                    % sign of force if we're looking at force felt by POB.
-                    % Then we get correct signs for damper and spring (i.e.
+                    % sign of force if wang positive damper and spring coeff
+                    % to mean passive elements. 
                     % Up to this point, sign convention for all force
                     % directions is positive when tension or shear for POB
                     % away from IP. For fit model, -Fx/y/z is consistent with a
                     % positive spring or damper restoring person to midline
                     % or starting position
-                    % of beam. The force we're looking at here is not the
-                    % same as the force up to this point [which was force
-                    % on IP]. Now we're looking at force on POB.)
                     clear m;
                     for i = 1:3
-                        [trough, itrough] = findpeaks(-Markers.POB.LHEE(start_idx:end,3),'MinPeakProminence',range(Markers.POB.LHEE(start_idx:end,3)/5)); % find troughs after first peak
-                        ind = itrough(1) + start_idx - 1;
                         if i == 1 % Find beam midline by pos LHEE at first local min after start_idx (start_idx is first vert peak LHEE) 
-                            ref = Markers.POB.LHEE(ind,1)/1000; 
-                            TrialData(n).Results.beamMidline = ref; % Store this value for plotting later. Just x component
+                            ref = TrialData(n).Results.beamMidline; 
                         else
-                            ref = clav(ind,i); % pos of clav when first step on to beam
+                            ref = clav(TrialData(n).Results.indStepBeam,i); % pos of clav when first step on to beam
                         end
                         m = [aClav(:,i) vClav(2:end,i) clav(3:end,i)-ref ones(size(aClav(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
                         if i == 1
@@ -287,42 +297,76 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                     end   
                     clear temp;
 
-                    %% Calculate xcorr Fint to clavicle disp just to compare to LT work
+                    %% Calculate xcorr for a variety of signals to compare to LT work
                     
+                    % FIP to clavicle disp
                     % Must remove means before doing xcorr
                     temp.Fx = Force(:,1) - nanmean(Force(:,1));
-    %                 temp.swayX = clavFilt(1,:) - nanmean(clavFilt(1,:));
                     temp.swayX = clav(:,1) - nanmean(clav(:,1)); % This is not displacement! This is position with mean removed!
-                    [r, lags] = xcorr(temp.Fx,temp.swayX,fs,'normalized'); % Constrain window for xcorr to +/- 1s
-                    ind = find(abs(r) == max(abs(r)));
+                    [r, lags] = xcorr(temp.Fx,temp.swayX,sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
+                    ind = find(abs(r) == max(abs(r))); % Look mag of xcorr
                     if length(ind) > 1 % Not sure what to do here, just flag it for now
-                        ind = ind
+                        msg = sprintf('More than one max for xcorr!');
                     end
-                    lagX = lags(ind)/fs;
-                    xcorrX = r(ind);
-
-                    temp.Fz = Force(:,3) - nanmean(Force(:,3));
-                    temp.swayZ = clav(:,3) - nanmean(clav(:,3));
-                    [r, lags] = xcorr(temp.Fx,temp.swayZ,fs,'normalized');
+                    TrialData(n).Results.lagFIPClavX = lags(ind)/sample_rate;
+                    TrialData(n).Results.xcorrFIPClavX = r(ind);
+                    clear r lags ind
+                  
+                    % FIP to POB vClav in ML dir only
+                    
+                    [r, lags] = xcorr(temp.Fx(2:end),vClav(:,1),sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
                     ind = find(abs(r) == max(abs(r)));
-                    if length(ind) > 1 % Not sure what to do here, just flag it for now
-                        ind = ind
-                    end
-                    lagZ = lags(ind)/fs;
-                    xcorrZ = max(r);
-
+                    TrialData(n).Results.lagFIPvClavX = lags(ind)/sample_rate;
+                    TrialData(n).Results.xcorrFIPvClavX = r(ind);
+                    clear r lags ind
+                    
+                    % vIP to POB vClav in ML dir only. Use vIn that's not
+                    % double-filtered.
+                    
+                    [r, lags] = xcorr(vFin(:,1),vClav(:,1),sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
+                    ind = find(abs(r) == max(abs(r)));
+                    TrialData(n).Results.lagvIPvClavX = lags(ind)/sample_rate;
+                    TrialData(n).Results.xcorrvIPvClavX = r(ind);
+                    clear r lags ind
                     temp = [];
-
+                    
                     %% Get POB RASI marker to calculate AP velocity of whole body 
-                    % Need to filter first before taking derivative!
-                    RASIFilty = filtfilt(Bm, Am, Markers.POB.RASI(start_idx:stop_idx,2))./1000; % (m)
+                    RASIFilty = filtfilt(sos, g, Markers.POB.RASI(start_idx:stop_idx,2))./1000; % (m)
                     % Store pos for later analysis/plotting
                     TrialData(n).Results.RASI = Markers.POB.RASI(start_idx:stop_idx,2)./1000;
 
+                    % Need to filter first before taking derivative!
                     % Store velocity for later analysis/plotting
-                    TrialData(n).Results.vyRASI = diff(RASIFilty).*fs;
+                    TrialData(n).Results.vyRASI = diff(RASIFilty).*sample_rate;
                     
-                    %% Get Assistant's arm len state 
+                    %% Get Assistant's arm len state (vector) and POB's arm len state (vector)
+                    % Compute the Arm Lengths as just scalar magnitude 
+                    for j = 1:length(RFIN)
+                        armAsst(j) = norm(RFIN(j,:) - RSHO(j,:)); % (m)
+                        if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
+                            armPOB(j) = norm(LSHO(j,:) - LFIN(j,:)); % (m)
+                        end
+                    end
+                    % Filter before take derivative
+                    armAsst = filtfilt(sos, g, armAsst);
+                    if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
+                        armPOB = filtfilt(sos, g, armPOB);
+                    end
+                    % vel
+                    vArmAsst = diff(armAsst).*sample_rate;
+                    if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
+                        vArmPOB = diff(armPOB).*sample_rate;
+                    end
+                    % Filter vel before take derivative
+                    vArmAsstFilt = filtfilt(sos, g, vArmAsst);
+                    if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
+                        vArmPOBFilt = filtfilt(sos, g, vArmPOB);
+                        aArmPOB = diff(vArmPOBFilt).*sample_rate;
+                    end
+                    aArmAsst = diff(vArmAsstFilt).*sample_rate;
+                    
+                    %% Get POB's effective arm length only in ML dir
+                    TrialData(n).Results.armPOBX = RFIN(:,1) - RSHO(:,1);
                 end
                 
 %% --------------- STORE THE RESULTS ----------------------------------- %%
@@ -334,9 +378,13 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                     
                     % For assisted trials, we store the forces, the arm vector,
                     % and the work, power, and alignment
-
+                    TrialData(n).Results.AssistArm = armAsst;
+                    TrialData(n).Results.AssistArmVel = vArmAsst;
+                    TrialData(n).Results.AssistArmAcc = aArmAsst;
                     % Store POB arm length data
-
+                    TrialData(n).Results.POBArm = armPOB;
+                    TrialData(n).Results.POBArmVel = vArmPOB;
+                    TrialData(n).Results.POBArmAcc = aArmPOB;
                     
 %                     % Save info on fit force to pos, vel, acc of rFin marker
 %                     TrialData(n).Results.cx = cx; % regression coeff's
@@ -362,16 +410,10 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                     TrialData(n).Results.cz_clav = cz_clav; % regression coeff's
                     TrialData(n).Results.rsqz_clav = rsqz_clav; % rsquare
                     TrialData(n).Results.pz_clav = pz_clav; % p-value
-
-                    % Save xcorr data
-                    TrialData(n).Results.xcorrX = xcorrX; 
-                    TrialData(n).Results.lagX = lagX; 
-                    TrialData(n).Results.xcorrZ = xcorrZ;
-                    TrialData(n).Results.lagZ = lagZ; 
                 end
                 
                 % Save interaction point state and work/power
-                TrialData(n).Results.IntPt = RFIN;
+                TrialData(n).Results.IntPt = rFin;
                 TrialData(n).Results.IntPtVel = vFin;
                 TrialData(n).Results.IntPtAcc = aFin;
 %                 TrialData(n).Results.IntCumWork_tot = intPt_cumWork_tot;
@@ -380,9 +422,9 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
                 TrialData(n).Results.IntPower = intPt_power;
                 TrialData(n).Results.IntCumWork = intPt_cumWork;
                 
-                clear intPt_power intPt_cumWork xcorrX lagX xcorrZ lagZ
+                clear intPt_power intPt_cumWork 
             end
-            %% Sway and segment angle 
+            %% Old code below needs to be cleaned. Sway and segment angle 
             % For beam walking trials, we also store the POB mediolateral
             % sway and the distance traveled along the beam as well as
             % force and sway correlations
@@ -391,7 +433,18 @@ function [TrialData] = mainWorkPowerAnalysisMW(TrialData,subj)
             if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Solo Beam', 'Assist Ground', 'Solo Ground'}))
                 clear clavFilt vClavFilt aClav
                 if any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam', 'Solo Ground'}))
-                    % Store clavicle pos for later analysis/plotting
+                    % Find midline of beam for reference
+                    [trough, itrough] = findpeaks(-Markers.LHEE(start_idx:end,3),'MinPeakProminence',range(Markers.LHEE(start_idx:end,3)/5)); % find troughs after first peak
+                    if ~isempty(itrough)
+                        TrialData(n).Results.indStepBeam = itrough(1) + start_idx - 1;
+                        TrialData(n).Results.beamMidline = Markers.LHEE(TrialData(n).Results.indStepBeam,1)/1000; 
+                    else
+                        TrialData(n).Results.beamMidline = nan; % Some weird cases
+                    end 
+                    
+                    % Store un-normalized clavicle pos for later analysis/plotting
+                    clav = Markers.CLAV(start_idx:stop_idx,:)./1000;
+                    TrialData(n).Results.CLAV = clav; % (m)
                     sway = Markers.CLAV(start_idx:stop_idx,1)./1000; % (m)
                     clavY = Markers.CLAV(:,2)./1000; % (m)
                     temp.LPSI = Markers.LPSI(start_idx:stop_idx,1)./1000;
