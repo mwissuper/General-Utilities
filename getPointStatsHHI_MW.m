@@ -31,8 +31,11 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanPosPowerIntPtX','meanNegPowerIntPtX',... % Power at int. pt.
     'meanPosPowerIntPtY','meanNegPowerIntPtY',...
     'meanPosPowerIntPtZ','meanNegPowerIntPtZ',...
+    'perPposFposX','perPnegFposX','perPposFnegX','perPnegFnegX',... % percentage of trial with certain combo's of sign in P and F
     'meanAbsPowerIntPtX','meanAbsPowerIntPtY','meanAbsPowerIntPtZ',... 
     'SDAbsPowerIntPtX','SDAbsPowerIntPtY','SDAbsPowerIntPtZ',...
+    'meanAbsPowerPOBX','SDAbsPowerPOBX','meanPosPowerPOBX','meanNegPowerPOBX',... % Power as force at IP x velocity of torso - use this not for energy analysis but to understand haptic comm
+    'POBperOppDevX','POBperAmpDevX','POBperOppRetX','POBperAmpRetX',... % percentage trial doing each type of action
     'meanPosFx','meanNegFx','SDPosFx','SDNegFx',... % Force metrics
     'meanPosFy','meanNegFy','SDPosFy','SDNegFy',...
     'meanPosFz','meanNegFz','SDPosFz','SDNegFz',...
@@ -42,15 +45,17 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanPosVx','meanNegVx','meanVx',... % Vel int pt metrics
     'meanPosVy','meanNegVy','meanVy',...
     'meanPosVz','meanNegVz','meanVz',...
-    'meanVx_clav','meanVy_clav','meanVz_clav',... % Vel clav metrics
-    'mx_clav','bx_clav','kx_clav','my_clav','by_clav','ky_clav','mz_clav','bz_clav','kz_clav',...% regression coeff's of rFin marker acc, vel, pos to force in each dir
-    'Rsqx_clav','Rsqy_clav','Rsqz_clav',...% Rsq of fit of regression above
-    'lagFIPvClavX','xcorrFIPvClavX','lagvIPvClavX','xcorrvIPvClavX','xcorrFIPClavX','lagFIPClavX',...% xcorr of IP signals to POB Clav signals to see if hand interaction lags/leads balance changes
+    'meanVx_torso','meanVy_torso','meanVz_torso',... % Vel clav metrics
+    'mx_torso','bx_torso','kx_torso','mx_lag_torso','bx_lag_torso','kx_lag_torso',...% regression coeff's of rFin marker acc, vel, pos to force in each dir
+    'Rsqx_torso','Rsqx_lag_torso',...% Rsq of fit of regression above
+    'Rsqx_IP','mx_IP','bx_IP','kx_IP',... % R^2 and reg coeff's IP state
+    'lagFIPvTorsoX','xcorrFIPvTorsoX','lagvIPvTorsoX','xcorrvIPvTorsoX','xcorrFIPTorsoX','lagFIPTorsoX',...% xcorr of IP signals to POB Torso signals to see if hand interaction lags/leads balance changes
     'meanArmPOBX','SDarmPOBX'... % Magnitude of vector from 
     'StdSway','Dist','AvgSpeed',...% Other kinem metrics
     'Complete','Notes'}; 
 
 % Old metrics
+%     'POBperPposFposX','POBperPnegFposX','POBperPposFnegX','POBperPnegFnegX',... % percentage of trial with certain combo's of sign in P and F
 %     'meanPosPowerPOBX','meanNegPowerPOBX',...
 %     'meanPosPowerPOBY','meanNegPowerPOBY',...
 %     'meanPosPowerPOBZ','meanNegPowerPOBZ',...
@@ -58,7 +63,7 @@ varNames = {'Subject','TrialNumber','Type',...
 %     'xcorrX','lagX','xcorrZ','lagZ',...% xcorr sway to force
 %     'mx','bx','kx','my','by','ky','mz','bz','kz',...% regression coeff's of rFin marker acc, vel, pos to force in each dir
 %     'Rsqx','Rsqy','Rsqz',...% Rsq of fit of regression above
-%     'rClavFvert','rCOMFlat',
+%     'rTorsoFvert','rCOMFlat',
 %     'PosWorkIntPtX','NegWorkIntPtX',...% Total work for trial (sum)
 %     'PosWorkIntPtY','NegWorkIntPtY',...
 %     'PosWorkIntPtZ','NegWorkIntPtZ',...
@@ -74,8 +79,11 @@ blank = {nan,nan,'',...
     nan,nan,...% power IP
     nan,nan,...
     nan,nan,...
+    nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in P (at IP) and F
     nan,nan,nan,...
     nan,nan,nan,...
+    nan,nan,nan,nan,...% Power as force at IP x velocity of torso
+    nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in P (torso) and F
     nan,nan,nan,nan,... % force
     nan,nan,nan,nan,...
     nan,nan,nan,nan,...
@@ -85,10 +93,11 @@ blank = {nan,nan,'',...
     nan,nan,nan,...% vel IP
     nan,nan,nan,...
     nan,nan,nan,...
-    nan,nan,nan,...% vel clav
-    nan,nan,nan,nan,nan,nan,nan,nan,nan,...% regression clav
-    nan,nan,nan,...% R^2 regression clav
-    nan,nan,nan,nan,nan,nan,...% xcorr of IP signals to POB Clav signals to see if hand interaction lags/leads balance changes
+    nan,nan,nan,...% vel Torso
+    nan,nan,nan,nan,nan,nan,...% regression Torso
+    nan,nan,...% R^2 regression Torso
+    nan,nan,nan,nan,... % R^2 and reg coeff's IP state
+    nan,nan,nan,nan,nan,nan,...% xcorr of IP signals to POB Torso signals to see if hand interaction lags/leads balance changes
     nan,nan,...% POB arm "length" mean and SD in ML dir
     nan,nan,nan,...% other kinem's
     true,' '};
@@ -118,7 +127,7 @@ for n = 1:numTrials
         % trials, we add in the standard deviation of the POB sway, the
         % distance traveled, the average speed, and the completion status.
         stats.StdSway(n) = std(TrialData(n).Results.beamerSway);
-%         stats.StdCOMSway(n) = std(TrialData(n).Results.beamerCOMSway);
+        stats.StdCOMSway(n) = std(TrialData(n).Results.beamerCOMSway);
 %         stats.StdPelvicObliq(n) = std(TrialData(n).Results.pelvicObliq);
 %         stats.StdThoraxObliq(n) = std(TrialData(n).Results.thoraxObliq);
 %         stats.StdLegObliq(n) = std(TrialData(n).Results.legObliq);
@@ -152,297 +161,324 @@ for n = 1:numTrials
 %             powerIntPt = TrialData(n).Results.IntPower;
 %             workIntPt = TrialData(n).Results.IntCumWork; % work calculated along each dir separately
             force = TrialData(n).Results.Forces; % This is with sign convention adjusted so compression is > 0 for Fz!
-            rFin = TrialData(n).Results.IntPt; % Use to get velocity of intPt
+%             rFin = TrialData(n).Results.IntPt; % Use to get velocity of intPt
             % Old code arm len
 %             [stats.PeakPosWork(n),stats.PeakNegWork(n)] = getPeaks(work);
 %             [stats.PeakPosPower(n),stats.PeakNegPower(n)] = getPeaks(power);
             
-        %% Interaction point power
-        % Look at mean abs power and also mean pos and neg power
-        % Power            
-        for i = 1:3
-            clear temp indPos indNeg PosPower NegPower
-            indPos = find(TrialData(n).Results.IntPower(:,i) > 0);
-            indNeg = find(TrialData(n).Results.IntPower(:,i) < 0);
-            PosPower = TrialData(n).Results.IntPower(indPos,i);
-            NegPower = TrialData(n).Results.IntPower(indNeg,i);
-            if i == 1
-                stats.meanAbsPowerIntPtX(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.SDAbsPowerIntPtX(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.meanPosPowerIntPtX(n) = nanmean(PosPower);
-                stats.meanNegPowerIntPtX(n) = nanmean(NegPower);
-            elseif i == 2
-                stats.meanAbsPowerIntPtY(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.SDAbsPowerIntPtY(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.meanPosPowerIntPtY(n) = nanmean(PosPower);
-                stats.meanNegPowerIntPtY(n) = nanmean(NegPower);
-            else
-                stats.meanAbsPowerIntPtZ(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.SDAbsPowerIntPtZ(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
-                stats.meanPosPowerIntPtZ(n) = nanmean(PosPower);
-                stats.meanNegPowerIntPtZ(n) = nanmean(NegPower);
-            end
-        end
-        
-        %% POB power
-        % Look at mean abs power and also mean pos and neg power
-        % Power            
-%         for i = 1:3
-%             clear temp indPos indNeg PosPOBpower NegPOBpower
-%             indPos = find(TrialData(n).Results.POBpower(:,i) > 0);
-%             indNeg = find(TrialData(n).Results.POBpower(:,i) < 0);
-%             PosPOBpower = TrialData(n).Results.POBpower(indPos,i);
-%             NegPOBpower = TrialData(n).Results.POBpower(indNeg,i);
-%             if i == 1
-%                 stats.meanAbsPowerPOBX(n) = nanmean(abs(TrialData(n).Results.POBpower(:,i)));
-%                 stats.meanPosPowerPOBX(n) = nanmean(PosPOBpower);
-%                 stats.meanNegPowerPOBX(n) = nanmean(NegPOBpower);
-%             elseif i == 2
-%                 stats.meanAbsPowerPOBY(n) = nanmean(abs(TrialData(n).Results.POBpower(:,i)));
-%                 stats.meanPosPowerPOBY(n) = nanmean(PosPOBpower);
-%                 stats.meanNegPowerPOBY(n) = nanmean(NegPOBpower);
-%             else
-%                 stats.meanAbsPowerPOBZ(n) = nanmean(abs(TrialData(n).Results.POBpower(:,i)));
-%                 stats.meanPosPowerPOBZ(n) = nanmean(PosPOBpower);
-%                 stats.meanNegPowerPOBZ(n) = nanmean(NegPOBpower);
-%             end
-%         end
-%             
-%             %% Mean Pos and Neg Work done per trial
-% %             % Dot product vectors
-% %             [stats.PosWorkIntPtTot(n),stats.NegWorkIntPtTot(n),stats.meanPosWorkIntPtTot(n),stats.meanNegWorkIntPtTot(n)] = getPosNegWork(powerIntPtTot,TrialData(n).Markers.samplerate);
-%             % Each direction separately
-%             for i = 1:3
-%                [tempPos,tempNeg,tempPosMean,tempNegMean] = getPosNegWork(powerIntPt(:,i),TrialData(n).Markers.samplerate); % This calculates one number for work using periods of time where power was pos or neg and integrating
-%                 if i == 1
-%                     stats.PosWorkIntPtX(n) = tempPos; % Total work done for whole trial (cumsum evaluated at end of trial)
-%                     stats.NegWorkIntPtX(n) = tempNeg;
-%                     stats.meanPosWorkIntPtX(n) = tempPosMean; % Mean work done during trial
-%                     stats.meanNegWorkIntPtX(n) = tempNegMean;
-%                 elseif i == 2
-%                     stats.PosWorkIntPtY(n) = tempPos;
-%                     stats.NegWorkIntPtY(n) = tempNeg;
-%                     stats.meanPosWorkIntPtY(n) = tempPosMean;
-%                     stats.meanNegWorkIntPtY(n) = tempNegMean;
-%                 else
-%                     stats.PosWorkIntPtZ(n) = tempPos;
-%                     stats.NegWorkIntPtZ(n) = tempNeg;
-%                     stats.meanPosWorkIntPtZ(n) = tempPosMean;
-%                     stats.meanNegWorkIntPtZ(n) = tempNegMean;
-%                 end
-%             end
-%             
-%             %% Mean of net (pos + neg) and abs work vs. time per trial
-%             % Each direction separately
-%             for i = 1:3
-%                 if i == 1
-%                     stats.meanWorkIntPtX(n) = nanmean(workIntPt(:,i));
-%                     stats.meanWorkMagIntPtX(n) = nanmean(abs(workIntPt(:,i)));
-%                 elseif i == 2
-%                     stats.meanWorkIntPtY(n) = nanmean(workIntPt(:,i));
-%                     stats.meanWorkMagIntPtY(n) = nanmean(abs(workIntPt(:,i)));
-%                 else
-%                     stats.meanWorkIntPtZ(n) = nanmean(workIntPt(:,i));
-%                     stats.meanWorkMagIntPtZ(n) = nanmean(abs(workIntPt(:,i)));
-%                 end
-%             end
-                        
-            %% Force - using lab/Vicon CS 1/31/20
-            % Get mean (to compare to other studies) and SD of force for
-            % pos, neg, net
-            for i = 1:3
-                indPos = find(force(:,i) > 0);
-                indNeg = find(force(:,i) < 0);
-                if i == 1
-                    stats.meanFx(n) = nanmean(abs(force(:,i)));
-                    stats.SDFx(n) = nanstd(abs(force(:,i)));
-                    stats.meanPosFx(n) = nanmean(force(indPos,i));
-                    stats.SDPosFx(n) = nanstd(force(indPos,i));
-                    stats.meanNegFx(n) = nanmean(force(indNeg,i));
-                    stats.SDNegFx(n) = nanstd(force(indNeg,i));
-                elseif i == 2
-                    stats.meanFy(n) = nanmean(abs(force(:,i)));
-                    stats.SDFy(n) = nanstd(abs(force(:,i)));
-                    stats.meanPosFy(n) = nanmean(force(indPos,i));
-                    stats.SDPosFy(n) = nanstd(force(indPos,i));
-                    stats.meanNegFy(n) = nanmean(force(indNeg,i));
-                    stats.SDNegFy(n) = nanstd(force(indNeg,i));
-                else
-                    stats.meanFz(n) = nanmean(abs(force(:,i)));
-                    stats.SDFz(n) = nanstd(abs(force(:,i)));
-                    stats.meanPosFz(n) = nanmean(force(indPos,i));
-                    stats.SDPosFz(n) = nanstd(force(indPos,i));
-                    stats.meanNegFz(n) = nanmean(force(indNeg,i));
-                    stats.SDNegFz(n) = nanstd(force(indNeg,i));
+            %% Interaction point power
+            % Look at mean abs power and also mean pos and neg power. Also look
+            % at proportion of pos power period when F > 0 and proportion of
+            % neg power period when F < 0
+            % Power   
+            if ~isnan(TrialData(n).Results.IntPower) % bad trials
+                for i = 1:3
+                    clear temp indPos indNeg PosPower NegPower indPposFpos indPnegFpos
+                    indPos = find(TrialData(n).Results.IntPower(:,i) > 0);
+                    indNeg = find(TrialData(n).Results.IntPower(:,i) < 0);
+                    PosPower = TrialData(n).Results.IntPower(indPos,i);
+                    NegPower = TrialData(n).Results.IntPower(indNeg,i);
+                    indPposFpos = find(TrialData(n).Results.Forces(indNeg,i) > 0);
+                    indPnegFpos = find(TrialData(n).Results.Forces(indPos,i) > 0);
+                    % Calculate these as a check
+                    indPposFneg = find(TrialData(n).Results.Forces(indNeg,i) < 0);
+                    indPnegFneg = find(TrialData(n).Results.Forces(indPos,i) < 0);
+                    if i == 1
+                        stats.meanAbsPowerIntPtX(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.SDAbsPowerIntPtX(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanPosPowerIntPtX(n) = nanmean(PosPower);
+                        stats.meanNegPowerIntPtX(n) = nanmean(NegPower);
+                        stats.perPposFposX(n) = length(indPposFpos)/length(TrialData(n).Results.IntPower(:,i));
+                        stats.perPnegFposX(n) = length(indPnegFpos)/length(TrialData(n).Results.IntPower(:,i));
+                        stats.perPposFnegX(n) = length(indPposFneg)/length(TrialData(n).Results.IntPower(:,i));
+                        stats.perPnegFnegX(n) = length(indPnegFneg)/length(TrialData(n).Results.IntPower(:,i));
+                    elseif i == 2
+                        stats.meanAbsPowerIntPtY(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.SDAbsPowerIntPtY(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanPosPowerIntPtY(n) = nanmean(PosPower);
+                        stats.meanNegPowerIntPtY(n) = nanmean(NegPower);
+                    else
+                        stats.meanAbsPowerIntPtZ(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.SDAbsPowerIntPtZ(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanPosPowerIntPtZ(n) = nanmean(PosPower);
+                        stats.meanNegPowerIntPtZ(n) = nanmean(NegPower);
+                    end
                 end
-                clear indPos indNeg
-            end
-            
-%             stats.PeakNegFx(n) = mean(PkNegFx);
-            % X dir
-%             % Seems arbitrary to pick what counts as a peak and to divide
-%             % epochs
-%             % X dir
-%             [PkPosFx,indPkPosF{1},PkNegFx,indPkNegF{1}] = getPosNegPeaks(force(1,:));
-%             stats.PeakPosFx(n) = mean(PkPosFx);
-%             stats.PeakNegFx(n) = mean(PkNegFx);
-%             % X dir
-%             [PkPosFy,indPkPosF{2},PkNegFy,indPkNegF{2}] = getPosNegPeaks(force(2,:));
-%             stats.PeakPosFy(n) = mean(PkPosFy);
-%             stats.PeakNegFy(n) = mean(PkNegFy);
-%             % Z dir
-%             [PkZCompression,indPkPosF{3},PkZTension,indPkNegF{3}] = getPosNegPeaks(force(3,:));
-%             stats.PeakZCompression(n) = mean(PkZCompression);
-%             stats.PeakZTension(n) = mean(PkZTension);
-%             % Old code just looked at one max value for trial instead of
-%             mean of extrema/peaks
-%             [stats.PeakZTension(n),stats.PeakZCompression(n)] = getPeaks(force(3,:));
-%             [stats.PeakPosFy(n), stats.PeakNegFy(n)] = getPeaks(force(2,:));
-%             [stats.PeakPosFx(n),stats.PeakNegFx(n)] = getPeaks(force(1,:));
 
-            %% Velocity metric to help interpret work data later
-            % Get mean for pos, neg, abs
-            for i = 1:3 
-                v = diff(TrialData(n).Results.IntPt(:,i)).*TrialData(n).Markers.samplerate;
-                indPos = find(v > 0);
-                indNeg = find(v < 0);
-                if i == 1
-                    stats.meanVx(n) = nanmean(abs(v));
-                    stats.meanPosVx(n) = nanmean(v(indPos));
-                    stats.meanNegVx(n) = nanmean(v(indNeg));
-                    stats.meanVx_clav(n) = nanmean(abs(TrialData(n).Results.vCLAV(:,i)));
-                elseif i == 2
-                    stats.meanVy(n) = nanmean(abs(v));
-                    stats.meanPosVy(n) = nanmean(v(indPos));
-                    stats.meanNegVy(n) = nanmean(v(indNeg));
-                    stats.meanVy_clav(n) = nanmean(abs(TrialData(n).Results.vCLAV(:,i)));
-                else
-                    stats.meanVz(n) = nanmean(abs(v));
-                    stats.meanPosVz(n) = nanmean(v(indPos));
-                    stats.meanNegVz(n) = nanmean(v(indNeg));
-                    stats.meanVz_clav(n) = nanmean(abs(TrialData(n).Results.vCLAV(:,i)));
-                end
-                clear indPos indNeg v
-            end
-            
-            %% Metrics for regression of rFin acc, vel, pos to force at interaction point
-%             if TrialData(n).Results.px < 0.05 % if fit is sig.
-%                 stats.mx(n) = TrialData(n).Results.cx(1);
-%                 stats.bx(n) = TrialData(n).Results.cx(2);
-%                 stats.kx(n) = TrialData(n).Results.cx(3);
-%                 stats.Rsqx(n) = TrialData(n).Results.rsqx;
-%             end
-%             if TrialData(n).Results.py < 0.05 % if fit is sig.
-%                 stats.my(n) = TrialData(n).Results.cy(1);
-%                 stats.by(n) = TrialData(n).Results.cy(2);
-%                 stats.ky(n) = TrialData(n).Results.cy(3);
-%                 stats.Rsqy(n) = TrialData(n).Results.rsqy;
-%             end
-%             if TrialData(n).Results.pz < 0.05 % if fit is sig.
-%                 stats.mz(n) = TrialData(n).Results.cz(1);
-%                 stats.bz(n) = TrialData(n).Results.cz(2);
-%                 stats.kz(n) = TrialData(n).Results.cz(3);
-%                 stats.Rsqz(n) = TrialData(n).Results.rsqz;
-%             end
-            
-            %% Metrics for regression of POB clav acc, vel, pos to force
-            if TrialData(n).Results.px_clav < 0.05 % if fit is sig.
-                stats.mx_clav(n) = TrialData(n).Results.cx_clav(1);
-                stats.bx_clav(n) = TrialData(n).Results.cx_clav(2);
-                stats.kx_clav(n) = TrialData(n).Results.cx_clav(3);
-                stats.Rsqx_clav(n) = TrialData(n).Results.rsqx_clav;
-            end
-            if TrialData(n).Results.py_clav < 0.05 % if fit is sig.
-                stats.my_clav(n) = TrialData(n).Results.cy_clav(1);
-                stats.by_clav(n) = TrialData(n).Results.cy_clav(2);
-                stats.ky_clav(n) = TrialData(n).Results.cy_clav(3);
-                stats.Rsqy_clav(n) = TrialData(n).Results.rsqy_clav;
-            end
-            if TrialData(n).Results.pz_clav < 0.05 % if fit is sig.
-                stats.mz_clav(n) = TrialData(n).Results.cz_clav(1);
-                stats.bz_clav(n) = TrialData(n).Results.cz_clav(2);
-                stats.kz_clav(n) = TrialData(n).Results.cz_clav(3);
-                stats.Rsqz_clav(n) = TrialData(n).Results.rsqz_clav;
-            end
-            
-            %% Correlation of power to regression residual
-            
-            % X/ML dir
-           stats.rPowerFresX(n) = TrialData(n).Results.corrPowerFresX;
+                %% POB power
+                % Look at mean abs power and also mean pos and neg power
+                % Power            
+                clear temp indPos indNeg PosPOBpower NegPOBpower indPposFpos indPnegFpos indPposFneg indPnegFneg
+                temp.POBpower = TrialData(n).Results.vTorso(:,1).*force(2:end,1);
+                indPos = find(temp.POBpower > 0); % tension and move to right or compression and move to left (oppose dir of movement)
+                indNeg = find(temp.POBpower < 0); % IP force amplifies direction of movement
+                PosPOBpower = temp.POBpower(indPos);
+                NegPOBpower = temp.POBpower(indNeg);
+
+                stats.meanAbsPowerPOBX(n) = nanmean(abs(temp.POBpower));
+                stats.SDAbsPowerPOBX(n) = nanstd(abs(temp.POBpower));
+                stats.meanPosPowerPOBX(n) = nanmean(PosPOBpower);
+                stats.meanNegPowerPOBX(n) = nanmean(NegPOBpower);
                 
-            %% Additional metrics that depend on force data
-            
-            %% Cross-correlation of IP signals to POB Clav signals to see if interaction lags/leads balance (ML dir only)
-            stats.xcorrFIPClavX(n) = TrialData(n).Results.xcorrFIPClavX;
-            stats.lagFIPClavX(n) = TrialData(n).Results.lagFIPClavX;
-            stats.xcorrFIPvClavX(n) = TrialData(n).Results.xcorrFIPvClavX;
-            stats.lagFIPvClavX(n) = TrialData(n).Results.lagFIPvClavX;
-            stats.xcorrvIPvClavX(n) = TrialData(n).Results.xcorrvIPvClavX;
-            stats.lagvIPvClavX(n) = TrialData(n).Results.lagvIPvClavX;
-            
-            %% Distance clav to IP in ML dir
+                % Percent time strategy
+                indPposFpos = find(force(indNeg,1) > 0);
+                indPnegFpos = find(force(indPos,1) > 0);
+                indPposFneg = find(force(indNeg,1) < 0);
+                indPnegFneg = find(force(indPos,1) < 0);
+%                 stats.POBperPposFposX(n) = length(indPposFpos)/length(TrialData(n).Results.vTorso(:,1));
+%                 stats.POBperPnegFposX(n) = length(indPnegFpos)/length(TrialData(n).Results.vTorso(:,1));
+%                 stats.POBperPposFnegX(n) = length(indPposFneg)/length(TrialData(n).Results.vTorso(:,1));
+%                 stats.POBperPnegFnegX(n) = length(indPnegFneg)/length(TrialData(n).Results.vTorso(:,1));
+                
+                %% POB x*x' and power
+                % Look at relation of forces to person's movement,
+                % reference of away or toward midline
+                if strcmpi(stats.Type(n),'Assist Beam')
+                    temp.midline = TrialData(n).Results.beamMidline;
+                elseif strcmpi(stats.Type(n),'Assist Ground')
+                    temp.midline = mean(TrialData(n).Results.torso(2:end,1));
+                end
+                temp.POBxv =  (TrialData(n).Results.torso(2:end,1)-temp.midline).*TrialData(n).Results.vTorso(:,1);
+                indDev = find(temp.POBxv > 0); % deviation
+                indindRet = find(temp.POBxv < 0); % return
+                indOppDev = intersect(indDev,indPos); 
+                indAmpDev = intersect(indDev,indNeg);
+                indOppRet = intersect(indindRet,indPos); 
+                indAmpRet = intersect(indindRet,indNeg);
+                
+                % Percent time strategy. All 4 should add up to 100%
+                stats.POBperOppDevX(n) = length(indOppDev)/length(TrialData(n).Results.vTorso(:,1));
+                stats.POBperAmpDevX(n) = length(indAmpDev)/length(TrialData(n).Results.vTorso(:,1));
+                stats.POBperOppRetX(n) = length(indOppRet)/length(TrialData(n).Results.vTorso(:,1));
+                stats.POBperAmpRetX(n) = length(indAmpRet)/length(TrialData(n).Results.vTorso(:,1));
+                
+                    
+                %% Mean Pos and Neg Work done per trial
+        % %             % Dot product vectors
+        % %             [stats.PosWorkIntPtTot(n),stats.NegWorkIntPtTot(n),stats.meanPosWorkIntPtTot(n),stats.meanNegWorkIntPtTot(n)] = getPosNegWork(powerIntPtTot,TrialData(n).Markers.samplerate);
+        %             % Each direction separately
+        %             for i = 1:3
+        %                [tempPos,tempNeg,tempPosMean,tempNegMean] = getPosNegWork(powerIntPt(:,i),TrialData(n).Markers.samplerate); % This calculates one number for work using periods of time where power was pos or neg and integrating
+        %                 if i == 1
+        %                     stats.PosWorkIntPtX(n) = tempPos; % Total work done for whole trial (cumsum evaluated at end of trial)
+        %                     stats.NegWorkIntPtX(n) = tempNeg;
+        %                     stats.meanPosWorkIntPtX(n) = tempPosMean; % Mean work done during trial
+        %                     stats.meanNegWorkIntPtX(n) = tempNegMean;
+        %                 elseif i == 2
+        %                     stats.PosWorkIntPtY(n) = tempPos;
+        %                     stats.NegWorkIntPtY(n) = tempNeg;
+        %                     stats.meanPosWorkIntPtY(n) = tempPosMean;
+        %                     stats.meanNegWorkIntPtY(n) = tempNegMean;
+        %                 else
+        %                     stats.PosWorkIntPtZ(n) = tempPos;
+        %                     stats.NegWorkIntPtZ(n) = tempNeg;
+        %                     stats.meanPosWorkIntPtZ(n) = tempPosMean;
+        %                     stats.meanNegWorkIntPtZ(n) = tempNegMean;
+        %                 end
+        %             end
+        %             
+        %             %% Mean of net (pos + neg) and abs work vs. time per trial
+        %             % Each direction separately
+        %             for i = 1:3
+        %                 if i == 1
+        %                     stats.meanWorkIntPtX(n) = nanmean(workIntPt(:,i));
+        %                     stats.meanWorkMagIntPtX(n) = nanmean(abs(workIntPt(:,i)));
+        %                 elseif i == 2
+        %                     stats.meanWorkIntPtY(n) = nanmean(workIntPt(:,i));
+        %                     stats.meanWorkMagIntPtY(n) = nanmean(abs(workIntPt(:,i)));
+        %                 else
+        %                     stats.meanWorkIntPtZ(n) = nanmean(workIntPt(:,i));
+        %                     stats.meanWorkMagIntPtZ(n) = nanmean(abs(workIntPt(:,i)));
+        %                 end
+        %             end
+
+                %% Force - using lab/Vicon CS 1/31/20
+                % Get mean (to compare to other studies) and SD of force for
+                % pos, neg, net
+                for i = 1:3
+                    indPos = find(force(:,i) > 0);
+                    indNeg = find(force(:,i) < 0);
+                    if i == 1
+                        stats.meanFx(n) = nanmean(abs(force(:,i)));
+                        stats.SDFx(n) = nanstd(abs(force(:,i)));
+                        stats.meanPosFx(n) = nanmean(force(indPos,i));
+                        stats.SDPosFx(n) = nanstd(force(indPos,i));
+                        stats.meanNegFx(n) = nanmean(force(indNeg,i));
+                        stats.SDNegFx(n) = nanstd(force(indNeg,i));
+                    elseif i == 2
+                        stats.meanFy(n) = nanmean(abs(force(:,i)));
+                        stats.SDFy(n) = nanstd(abs(force(:,i)));
+                        stats.meanPosFy(n) = nanmean(force(indPos,i));
+                        stats.SDPosFy(n) = nanstd(force(indPos,i));
+                        stats.meanNegFy(n) = nanmean(force(indNeg,i));
+                        stats.SDNegFy(n) = nanstd(force(indNeg,i));
+                    else
+                        stats.meanFz(n) = nanmean(abs(force(:,i)));
+                        stats.SDFz(n) = nanstd(abs(force(:,i)));
+                        stats.meanPosFz(n) = nanmean(force(indPos,i));
+                        stats.SDPosFz(n) = nanstd(force(indPos,i));
+                        stats.meanNegFz(n) = nanmean(force(indNeg,i));
+                        stats.SDNegFz(n) = nanstd(force(indNeg,i));
+                    end
+                    clear indPos indNeg
+                end
+
+    %             stats.PeakNegFx(n) = mean(PkNegFx);
+                % X dir
+    %             % Seems arbitrary to pick what counts as a peak and to divide
+    %             % epochs
+    %             % X dir
+    %             [PkPosFx,indPkPosF{1},PkNegFx,indPkNegF{1}] = getPosNegPeaks(force(1,:));
+    %             stats.PeakPosFx(n) = mean(PkPosFx);
+    %             stats.PeakNegFx(n) = mean(PkNegFx);
+    %             % X dir
+    %             [PkPosFy,indPkPosF{2},PkNegFy,indPkNegF{2}] = getPosNegPeaks(force(2,:));
+    %             stats.PeakPosFy(n) = mean(PkPosFy);
+    %             stats.PeakNegFy(n) = mean(PkNegFy);
+    %             % Z dir
+    %             [PkZCompression,indPkPosF{3},PkZTension,indPkNegF{3}] = getPosNegPeaks(force(3,:));
+    %             stats.PeakZCompression(n) = mean(PkZCompression);
+    %             stats.PeakZTension(n) = mean(PkZTension);
+    %             % Old code just looked at one max value for trial instead of
+    %             mean of extrema/peaks
+    %             [stats.PeakZTension(n),stats.PeakZCompression(n)] = getPeaks(force(3,:));
+    %             [stats.PeakPosFy(n), stats.PeakNegFy(n)] = getPeaks(force(2,:));
+    %             [stats.PeakPosFx(n),stats.PeakNegFx(n)] = getPeaks(force(1,:));
+
+                %% Velocity metric to help interpret work data later
+                % Get mean for pos, neg, abs
+                for i = 1:3 
+                    v = diff(TrialData(n).Results.IntPt(:,i)).*TrialData(n).Markers.samplerate;
+                    indPos = find(v > 0);
+                    indNeg = find(v < 0);
+                    if i == 1
+                        stats.meanVx(n) = nanmean(abs(v));
+                        stats.meanPosVx(n) = nanmean(v(indPos));
+                        stats.meanNegVx(n) = nanmean(v(indNeg));
+                        stats.meanVx_torso(n) = nanmean(abs(TrialData(n).Results.vTorso(:,i)));
+                    elseif i == 2
+                        stats.meanVy(n) = nanmean(abs(v));
+                        stats.meanPosVy(n) = nanmean(v(indPos));
+                        stats.meanNegVy(n) = nanmean(v(indNeg));
+                        stats.meanVy_torso(n) = nanmean(abs(TrialData(n).Results.vTorso(:,i)));
+                    else
+                        stats.meanVz(n) = nanmean(abs(v));
+                        stats.meanPosVz(n) = nanmean(v(indPos));
+                        stats.meanNegVz(n) = nanmean(v(indNeg));
+                        stats.meanVz_torso(n) = nanmean(abs(TrialData(n).Results.vTorso(:,i)));
+                    end
+                    clear indPos indNeg v
+                end
+
+                %% Metrics for regression of POB state to force
+                if TrialData(n).Results.px_torso < 0.05 % if fit is sig.
+                    stats.mx_torso(n) = TrialData(n).Results.cx_torso(1);
+                    stats.bx_torso(n) = TrialData(n).Results.cx_torso(2);
+                    stats.kx_torso(n) = TrialData(n).Results.cx_torso(3);
+                    stats.Rsqx_torso(n) = TrialData(n).Results.rsqx_torso;
+                    % with lag
+                    stats.mx_lag_torso(n) = TrialData(n).Results.cx_lag_torso(1);
+                    stats.bx_lag_torso(n) = TrialData(n).Results.cx_lag_torso(2);
+                    stats.kx_lag_torso(n) = TrialData(n).Results.cx_lag_torso(3);
+                    stats.Rsqx_lag_torso(n) = TrialData(n).Results.rsqx_lag_torso;
+                end
+%                 if TrialData(n).Results.py_torso < 0.05 % if fit is sig.
+%                     stats.my_torso(n) = TrialData(n).Results.cy_torso(1);
+%                     stats.by_torso(n) = TrialData(n).Results.cy_torso(2);
+%                     stats.ky_torso(n) = TrialData(n).Results.cy_torso(3);
+%                     stats.Rsqy_torso(n) = TrialData(n).Results.rsqy_torso;
+%                 end
+%                 if TrialData(n).Results.pz_torso < 0.05 % if fit is sig.
+%                     stats.mz_torso(n) = TrialData(n).Results.cz_torso(1);
+%                     stats.bz_torso(n) = TrialData(n).Results.cz_torso(2);
+%                     stats.kz_torso(n) = TrialData(n).Results.cz_torso(3);
+%                     stats.Rsqz_torso(n) = TrialData(n).Results.rsqz_torso;
+%                 end
+
+                %% Metrics for regression of IP state to force
+                if TrialData(n).Results.px_IP < 0.05 % if fit is sig.
+                    stats.mx_IP(n) = TrialData(n).Results.cx_IP(1);
+                    stats.bx_IP(n) = TrialData(n).Results.cx_IP(2);
+                    stats.kx_IP(n) = TrialData(n).Results.cx_IP(3);
+                    stats.Rsqx_IP(n) = TrialData(n).Results.rsqx_IP;
+                end
+
+                %% Correlation of power to regression residual
+
+                % X/ML dir
+                stats.rPowerFresX(n) = TrialData(n).Results.corrPowerFresX;
+
+                %% Additional metrics that depend on force data
+
+                %% Cross-correlation of IP signals to POB torso signals to see if interaction lags/leads balance (ML dir only)
+                stats.xcorrFIPTorsoX(n) = TrialData(n).Results.xcorrFIPTorsoX;
+                stats.lagFIPTorsoX(n) = TrialData(n).Results.lagFIPTorsoX;
+                stats.xcorrFIPvTorsoX(n) = TrialData(n).Results.xcorrFIPvTorsoX;
+                stats.lagFIPvTorsoX(n) = TrialData(n).Results.lagFIPvTorsoX;
+                stats.xcorrvIPvTorsoX(n) = TrialData(n).Results.xcorrvIPvTorsoX;
+                stats.lagvIPvTorsoX(n) = TrialData(n).Results.lagvIPvTorsoX;
+
+                %% Correlation force to torso or COM pos
+                stats.rFlatCOM(n) = TrialData(n).Results.rFlatCOM; 
+                stats.rFsway(n) = TrialData(n).Results.rFsway;
+                % Plots for all trials for a participant
+                if plotoption > 0
+                    plotind = plotind + 1;
+                    colors = hsv(3);
+
+                    if plotoption == 1 % Plot vector-based power with peaks
+    %                     time = (0:(length(powerIntPtTot)-1))./TrialData(n).Markers.samplerate;
+    %                     subplot(4,4,plotind),plot(time,powerIntPtTot),hold on, plot(indPkPosPowerTot,powerIntPtTot(indPkPosPowerTot),'o'),...
+    %                         plot(indPkNegPowerTot,-powerIntPtTot(indPkNegPowerTot),'x')
+    %                     legend('Power','Pos pks','Neg pks');
+                    elseif plotoption == 2 % Plot indiv component power with peaks
+                        time = (0:(length(powerIntPt(1,:))-1))./TrialData(n).Markers.samplerate;
+                        subplot(4,5,plotind)
+                            for i = 1:3
+                                plot(powerIntPt(:,i),'color',colors(:,i)),hold on;
+                            end
+                            if plotind == 1
+                                legend('x','y','z');
+                            end
+                            for i = 1:3 % Separate loop for legend's sake
+                                temp = indPkPosPower{i};
+                                if ~isnan(temp) % if there are non-nan values, i.e. if peaks exist
+                                    plot(indPkPosPower{i},powerIntPt(i,temp),'o','color',colors(:,i)),...
+                                end
+                                temp = indPkNegPower{i};
+                                if ~isnan(temp)
+                                    plot(indPkNegPower{i},powerIntPt(i,temp),'x','color',colors(:,i))
+                                end
+                            end
+                            hline(0,'k--');
+                    elseif plotoption == 3 % Plot indiv components force with peaks
+                        time = (0:(length(force(1,:))-1))./TrialData(n).Markers.samplerate;
+                        subplot(4,5,plotind)
+                            for i = 1:3
+                                plot(force(:,i),'color',colors(:,i)),hold on;
+                            end
+                            if plotind == 1
+                                legend('x','y','z');
+                            end
+                            for i = 1:3 % Separate loop for legend's sake
+                                temp = indPkPosF{i};
+                                if ~isnan(temp)
+                                    plot(indPkPosF{i},force(i,temp),'o','color',colors(:,i)),...
+                                end
+                                temp = indPkNegF{i};
+                                if ~isnan(temp)
+                                    plot(indPkNegF{i},force(i,temp),'x','color',colors(:,i))
+                                end
+                            end
+                            hline(0,'k--');
+                    end
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                    xlabel('Frame'),ylabel('Force (N)'),title(titlename);
+                end
+            end
+            %% Distance torso to IP in ML dir
             stats.meanArmPOBX(n) = nanmean(TrialData(n).Results.armPOBX);
             stats.SDarmPOBX(n) = nanstd(TrialData(n).Results.armPOBX);
-            
-            %% Correlation force to Clav or COM pos
-            stats.rFvertClav(n) = TrialData(n).Results.rFvertClav; 
-            stats.rFlatCOM(n) = TrialData(n).Results.rFlatCOM; 
-            stats.rFvertCOM(n) = TrialData(n).Results.rFvertCOM;
-            stats.rFlatClav(n) = TrialData(n).Results.rFlatClav;
-            % Plots for all trials for a participant
-            if plotoption > 0
-                plotind = plotind + 1;
-                colors = hsv(3);
-                
-                if plotoption == 1 % Plot vector-based power with peaks
-%                     time = (0:(length(powerIntPtTot)-1))./TrialData(n).Markers.samplerate;
-%                     subplot(4,4,plotind),plot(time,powerIntPtTot),hold on, plot(indPkPosPowerTot,powerIntPtTot(indPkPosPowerTot),'o'),...
-%                         plot(indPkNegPowerTot,-powerIntPtTot(indPkNegPowerTot),'x')
-%                     legend('Power','Pos pks','Neg pks');
-                elseif plotoption == 2 % Plot indiv component power with peaks
-                    time = (0:(length(powerIntPt(1,:))-1))./TrialData(n).Markers.samplerate;
-                    subplot(4,5,plotind)
-                        for i = 1:3
-                            plot(powerIntPt(:,i),'color',colors(:,i)),hold on;
-                        end
-                        if plotind == 1
-                            legend('x','y','z');
-                        end
-                        for i = 1:3 % Separate loop for legend's sake
-                            temp = indPkPosPower{i};
-                            if ~isnan(temp) % if there are non-nan values, i.e. if peaks exist
-                                plot(indPkPosPower{i},powerIntPt(i,temp),'o','color',colors(:,i)),...
-                            end
-                            temp = indPkNegPower{i};
-                            if ~isnan(temp)
-                                plot(indPkNegPower{i},powerIntPt(i,temp),'x','color',colors(:,i))
-                            end
-                        end
-                        hline(0,'k--');
-                elseif plotoption == 3 % Plot indiv components force with peaks
-                    time = (0:(length(force(1,:))-1))./TrialData(n).Markers.samplerate;
-                    subplot(4,5,plotind)
-                        for i = 1:3
-                            plot(force(:,i),'color',colors(:,i)),hold on;
-                        end
-                        if plotind == 1
-                            legend('x','y','z');
-                        end
-                        for i = 1:3 % Separate loop for legend's sake
-                            temp = indPkPosF{i};
-                            if ~isnan(temp)
-                                plot(indPkPosF{i},force(i,temp),'o','color',colors(:,i)),...
-                            end
-                            temp = indPkNegF{i};
-                            if ~isnan(temp)
-                                plot(indPkNegF{i},force(i,temp),'x','color',colors(:,i))
-                            end
-                        end
-                        hline(0,'k--');
-                end
-                titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
-                xlabel('Frame'),ylabel('Force (N)'),title(titlename);
-            end
         end
         % Copy Notes to the table (if they exist)
         if isfield(TrialData(n).Info,'Notes')
