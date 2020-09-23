@@ -201,11 +201,14 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     else
                         torsoY = Markers.AP.CLAV(:,2)./1000;
                     end
+                    vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
                     % Luke's method using max_distance
                     [start_L,stop_L] = getHHIAnalysisWindow(Markers.AP,max_distance);
                     % Check the assister's arm
                     [start_L,stop_L] = checkArm(Markers.AP,start_L,stop_L);
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.AP,vLHEEZfilt,0,torsoY);
+
+                    % New method
+                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.AP,vLHEEZfilt,0,vTorsoY);
                 else
                     Markers = medfiltFields(TrialData(n).Markers,1);
                     LHEE = Markers.LHEE;
@@ -217,11 +220,13 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     else
                         torsoY = Markers.CLAV(:,2)./1000;
                     end
+                    vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
                     % Luke's method
                     [start_L,stop_L] = getHHIAnalysisWindow(Markers,max_distance);
                     % Check the assister's arm
                     [start_L,stop_L] = checkArm(Markers,start_L,stop_L);
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,torsoY);
+
+                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,vTorsoY);
                 end
             elseif any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Assist Ground','Assist beam'}))
                 % Assist Ground, Assist Beam
@@ -237,16 +242,18 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 else
                     torsoY = Markers.POB.CLAV(:,2)./1000;
                 end
+                vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
                 % Luke's method
                 [start_L,stop_L] = getHHIAnalysisWindow(Markers.POB,max_distance);
                 % Check the assister's arm
 %                 [start_L,stop_L] = checkArm(Markers.AP,start_L,stop_L);
+                
                 % My method
                 if strcmpi(TrialData(n).Info.Condition, 'Assist Ground')
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,0,torsoY); % use max distance method and not heel vertical height relative to beam when no beam-walking
+                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,0,vTorsoY); % use max distance method and not heel vertical height relative to beam when no beam-walking
                 else
                     vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                    [start_idx,stop_idx,beamHt] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,1,torsoY);
+                    [start_idx,stop_idx,beamHt] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,1);
                 end
             else % Solo
                 % Solo Beam, Solo Ground
@@ -264,7 +271,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 [start_L,stop_L] = getHHIAnalysisWindow(Markers,max_distance);
                 if strcmpi(TrialData(n).Info.Condition, 'Assist Ground')
 %                     start_idx = start_L; stop_idx = stop_L; % use max distance method and not heel vertical height relative to beam when no beam-walking
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,torsoY);
+                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,vTorsoY);
                 else
                     [start_idx,stop_idx,beamHt] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,1,torsoY);
                 end
@@ -563,6 +570,10 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 vFin = diff(rFilt).*sample_rate;
                 for i = 1:3
                     intPt_power(:,i) = Force(2:end,i).*vFin(:,i); % P < 0 for motor because F > 0 for tension and v > 0 for move to the right
+                    if i == 1 % x axis, check worst case drift effect of 1.5N
+                        IP_powerX_hi(1,:) = (Force(2:end,i)+1.5).*vFin(:,i);
+                        IP_powerX_lo(1,:) = (Force(2:end,i)-1.5).*vFin(:,i);
+                    end
                     intPt_cumWork(:,i) = cumsum(intPt_power(:,i))./sample_rate;
                     intPt_netWork_norm(i) = sum(intPt_power(:,i))/sample_rate/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
                 end
@@ -802,6 +813,8 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     end
 
                     TrialData(n).Results.IntPower = intPt_power;
+                    TrialData(n).Results.IPpowerX_lo = IP_powerX_lo;
+                    TrialData(n).Results.IPpowerX_hi = IP_powerX_hi;
                     TrialData(n).Results.IntCumWork = intPt_cumWork;
                 end
                 
@@ -1003,6 +1016,21 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     hline(beamMidline,'k');
                     hline(beamMidline + [-beamMidlineSD beamMidlineSD],'k--');
                     xlabel('Time (s)'),ylabel('Torso pos (m)');
+                    if plotind == 1
+                        titlename = sprintf('HHI%i %s',subj,TrialData(n).Info.Trial); title(titlename);
+                    else
+                        titlename = sprintf('HHI%s',TrialData(n).Info.Trial); title(titlename);
+                    end
+                elseif plotCheck == 4 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Ground','Assist Ground'})) % Check time window of analysis by plot sway and vertical displacement (visually vert disp is a strong tell of when they stopped walking)
+                    plotind = plotind + 1;
+                    subplot(numrows,numcols,plotind)
+                    t = 0:(length(torso(:,2))-1); % time starts and ends with start_idx and stop_idx
+                    t = t./sample_rate;
+                    yyaxis left
+                    plot(t,torso(:,1)),hold on;
+                    xlabel('Time (s)'),ylabel('Torso ML pos (m)');
+                    yyaxis right
+                    plot(t(2:end),vTorsoFilt(:,2)),ylabel('Torso AP vel (m)'),ylim([0 0.005]);
                     if plotind == 1
                         titlename = sprintf('HHI%i %s',subj,TrialData(n).Info.Trial); title(titlename);
                     else

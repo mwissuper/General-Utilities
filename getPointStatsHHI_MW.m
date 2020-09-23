@@ -32,17 +32,23 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanPosPowerIntPtY','meanNegPowerIntPtY',...
     'meanPosPowerIntPtZ','meanNegPowerIntPtZ',...
     'perPposFposX','perPnegFposX','perPposFnegX','perPnegFnegX',... % percentage of trial with certain combo's of sign in P and F
-    'meanAbsPowerIntPtX','meanAbsPowerIntPtY','meanAbsPowerIntPtZ',... 
+    'perVposFposX','perVnegFposX','perVposFnegX','perVnegFnegX',... % percentage of trial with certain combo's of sign in v and F
+    'perVposFloposX','perVnegFloposX','perVposFlonegX','perVnegFlonegX',... % percentage of trial with certain combo's of sign in v and lo-boundary drift F
+    'perVposFhiposX','perVnegFhiposX','perVposFhinegX','perVnegFhinegX',... % percentage of trial with certain combo's of sign in v and hi-boundary drift F
+    'meanIPpowerPosF','meanIPpowerNegF',... % mean Pos and neg power for regular offset F drift (calc as check on IntPtPowerX)
+    'meanIPpowerPosFlo','meanIPpowerNegFlo',... % mean Pos and neg power for lo-boundary F drift
+    'meanIPpowerPosFhi','meanIPpowerNegFhi',... % mean Pos and neg power for hi-boundary F drift 
+    'meanIPpowerX','meanIPpowerY','meanIPpowerZ',... % mean of signed value, not abs, changed 9/14/20
     'SDAbsPowerIntPtX','SDAbsPowerIntPtY','SDAbsPowerIntPtZ',...
     'meanAbsPowerPOBX','SDAbsPowerPOBX','meanPosPowerPOBX','meanNegPowerPOBX',... % Power as force at IP x velocity of torso - use this not for energy analysis but to understand haptic comm
     'POBperOppDevX','POBperAmpDevX','POBperOppRetX','POBperAmpRetX',... % percentage trial doing each type of action
     'meanPosFx','meanNegFx','SDPosFx','SDNegFx',... % Force metrics
     'meanPosFy','meanNegFy','SDPosFy','SDNegFy',...
     'meanPosFz','meanNegFz','SDPosFz','SDNegFz',...
-    'meanFx','meanFy','meanFz',... % mean of force mag (abs force)
+    'meanFx','meanFy','meanFz',... % mean of force (not mag, changed 8/31/20
     'SDFx','SDFy','SDFz',... % SD of abs force 
     'rPowerFresX',... % correlation power and force model residual in x/ML dir
-    'meanPosVx','meanNegVx','meanVx',... % Vel int pt metrics
+    'meanPosVx','meanNegVx','meanVx','SDVx',... % Vel int pt metrics
     'meanPosVy','meanNegVy','meanVy',...
     'meanPosVz','meanNegVz','meanVz',...
     'meanVx_torso','meanVy_torso','meanVz_torso',... % Vel clav metrics
@@ -80,6 +86,12 @@ blank = {nan,nan,'',...
     nan,nan,...
     nan,nan,...
     nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in P (at IP) and F
+    nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in v and F
+    nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in v and Flo
+    nan,nan,nan,nan,...% percentage of trial with certain combo's of sign in v and Fhi
+    nan,nan,...% mean Pos and neg power for regular offset F drift (calc as check on IntPtPowerX)
+    nan,nan,...% mean Pos and neg power for lo-boundary F drift
+    nan,nan,...% mean Pos and neg power for hi-boundary F drift
     nan,nan,nan,...
     nan,nan,nan,...
     nan,nan,nan,nan,...% Power as force at IP x velocity of torso
@@ -90,7 +102,7 @@ blank = {nan,nan,'',...
     nan,nan,nan,...% abs force
     nan,nan,nan,...% net force
     nan,...% corr power and force model resid
-    nan,nan,nan,...% vel IP
+    nan,nan,nan,nan,...% pos, neg, abs vel IP
     nan,nan,nan,...
     nan,nan,nan,...
     nan,nan,nan,...% vel Torso
@@ -111,6 +123,10 @@ numTrials = length(TrialData);
 blank = repmat(blank,numTrials,1);
 % Create an 'empty' table
 stats = cell2table(blank,'VariableNames',varNames);
+
+% Butterworth 3rd order lowpass filter, cutoff 10Hz
+[z, p, k] = butter(3,10/50);
+[sos, g] = zp2sos(z, p, k);
 
 plotind = 0;
 %% Loop over the trials, pulling the point statistics
@@ -167,11 +183,16 @@ for n = 1:numTrials
 %             [stats.PeakPosPower(n),stats.PeakNegPower(n)] = getPeaks(power);
             
             %% Interaction point power
+            
+            % Look at force and force lo/hi bounds with drift and combo
+            % with velocity
+                        
             % Look at mean abs power and also mean pos and neg power. Also look
             % at proportion of pos power period when F > 0 and proportion of
             % neg power period when F < 0
-            % Power   
-            if ~isnan(TrialData(n).Results.IntPower) % bad trials
+ 
+            if ~isnan(TrialData(n).Results.IntPower) % bad trials              
+                %% IP force and power combo's. Look at signed power mean, pos and neg power means
                 for i = 1:3
                     clear temp indPos indNeg PosPower NegPower indPposFpos indPnegFpos
                     indPos = find(TrialData(n).Results.IntPower(:,i) > 0);
@@ -184,8 +205,8 @@ for n = 1:numTrials
                     indPposFneg = find(TrialData(n).Results.Forces(indNeg,i) < 0);
                     indPnegFneg = find(TrialData(n).Results.Forces(indPos,i) < 0);
                     if i == 1
-                        stats.meanAbsPowerIntPtX(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                        stats.SDAbsPowerIntPtX(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanIPpowerX(n) = nanmean(TrialData(n).Results.IntPower(:,i));
+                        stats.SDIPpowerX(n) = nanstd(TrialData(n).Results.IntPower(:,i));
                         stats.meanPosPowerIntPtX(n) = nanmean(PosPower);
                         stats.meanNegPowerIntPtX(n) = nanmean(NegPower);
                         stats.perPposFposX(n) = length(indPposFpos)/length(TrialData(n).Results.IntPower(:,i));
@@ -193,17 +214,28 @@ for n = 1:numTrials
                         stats.perPposFnegX(n) = length(indPposFneg)/length(TrialData(n).Results.IntPower(:,i));
                         stats.perPnegFnegX(n) = length(indPnegFneg)/length(TrialData(n).Results.IntPower(:,i));
                     elseif i == 2
-                        stats.meanAbsPowerIntPtY(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                        stats.SDAbsPowerIntPtY(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanIPpowerY(n) = nanmean(TrialData(n).Results.IntPower(:,i));
+                        stats.SDIPpowerY(n) = nanstd(TrialData(n).Results.IntPower(:,i));
                         stats.meanPosPowerIntPtY(n) = nanmean(PosPower);
                         stats.meanNegPowerIntPtY(n) = nanmean(NegPower);
                     else
-                        stats.meanAbsPowerIntPtZ(n) = nanmean(abs(TrialData(n).Results.IntPower(:,i)));
-                        stats.SDAbsPowerIntPtZ(n) = nanstd(abs(TrialData(n).Results.IntPower(:,i)));
+                        stats.meanIPpowerZ(n) = nanmean(TrialData(n).Results.IntPower(:,i));
+                        stats.SDIPpowerZ(n) = nanstd(TrialData(n).Results.IntPower(:,i));
                         stats.meanPosPowerIntPtZ(n) = nanmean(PosPower);
                         stats.meanNegPowerIntPtZ(n) = nanmean(NegPower);
                     end
                 end
+                
+                %% IP force and v IP combo's (x dir only)
+                clear vx 
+                vx = diff(filtfilt(sos,g,TrialData(n).Results.IntPt(:,1))).*TrialData(n).Markers.samplerate;
+                [stats.perVposFposX(n),stats.perVnegFposX(n),stats.perVposFnegX(n),stats.perVnegFnegX(n),stats.meanIPpowerPosF(n),stats.meanIPpowerNegF(n)] = signProdPer(vx,TrialData(n).Results.Forces(2:end,1)); % meanABpos should be same as mean of intPt_power_pos
+                
+                % Do same as above for lo boundary F with drift
+                [stats.perVposFloposX(n),stats.perVnegFloposX(n),stats.perVposFlonegX(n),stats.perVnegFlonegX(n),stats.meanIPpowerPosFlo(n),stats.meanIPpowerNegFlo(n)] = signProdPer(vx,TrialData(n).Results.Forces(2:end,1)-1.5); % meanABpos should be same as mean of intPt_power_pos
+                
+                % Do same as above for hi boundary F with drift
+                [stats.perVposFhiposX(n),stats.perVnegFhiposX(n),stats.perVposFhinegX(n),stats.perVnegFhinegX(n),stats.meanIPpowerPosFhi(n),stats.meanIPpowerNegFhi(n)] = signProdPer(vx,TrialData(n).Results.Forces(2:end,1)+1.5); % meanABpos should be same as mean of intPt_power_pos
 
                 %% POB power
                 % Look at mean abs power and also mean pos and neg power
@@ -251,8 +283,7 @@ for n = 1:numTrials
                 stats.POBperAmpDevX(n) = length(indAmpDev)/length(TrialData(n).Results.vTorso(:,1));
                 stats.POBperOppRetX(n) = length(indOppRet)/length(TrialData(n).Results.vTorso(:,1));
                 stats.POBperAmpRetX(n) = length(indAmpRet)/length(TrialData(n).Results.vTorso(:,1));
-                
-                    
+                                    
                 %% Mean Pos and Neg Work done per trial
         % %             % Dot product vectors
         % %             [stats.PosWorkIntPtTot(n),stats.NegWorkIntPtTot(n),stats.meanPosWorkIntPtTot(n),stats.meanNegWorkIntPtTot(n)] = getPosNegWork(powerIntPtTot,TrialData(n).Markers.samplerate);
@@ -299,21 +330,21 @@ for n = 1:numTrials
                     indPos = find(force(:,i) > 0);
                     indNeg = find(force(:,i) < 0);
                     if i == 1
-                        stats.meanFx(n) = nanmean(abs(force(:,i)));
-                        stats.SDFx(n) = nanstd(abs(force(:,i)));
+                        stats.meanFx(n) = nanmean(force(:,i));
+                        stats.SDFx(n) = nanstd(force(:,i));
                         stats.meanPosFx(n) = nanmean(force(indPos,i));
                         stats.SDPosFx(n) = nanstd(force(indPos,i));
                         stats.meanNegFx(n) = nanmean(force(indNeg,i));
                         stats.SDNegFx(n) = nanstd(force(indNeg,i));
                     elseif i == 2
-                        stats.meanFy(n) = nanmean(abs(force(:,i)));
+                        stats.meanFy(n) = nanmean(force(:,i));
                         stats.SDFy(n) = nanstd(abs(force(:,i)));
                         stats.meanPosFy(n) = nanmean(force(indPos,i));
                         stats.SDPosFy(n) = nanstd(force(indPos,i));
                         stats.meanNegFy(n) = nanmean(force(indNeg,i));
                         stats.SDNegFy(n) = nanstd(force(indNeg,i));
                     else
-                        stats.meanFz(n) = nanmean(abs(force(:,i)));
+                        stats.meanFz(n) = nanmean(force(:,i));
                         stats.SDFz(n) = nanstd(abs(force(:,i)));
                         stats.meanPosFz(n) = nanmean(force(indPos,i));
                         stats.SDPosFz(n) = nanstd(force(indPos,i));
@@ -353,6 +384,7 @@ for n = 1:numTrials
                     indNeg = find(v < 0);
                     if i == 1
                         stats.meanVx(n) = nanmean(abs(v));
+                        stats.SDVx(n) = nanstd(abs(v));
                         stats.meanPosVx(n) = nanmean(v(indPos));
                         stats.meanNegVx(n) = nanmean(v(indNeg));
                         stats.meanVx_torso(n) = nanmean(abs(TrialData(n).Results.vTorso(:,i)));
