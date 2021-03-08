@@ -38,6 +38,7 @@ function [Force, Torque] = recoverForces(Force, Torque, Markers)
     F_Scale = [12.5, 12.5, 50]';     %Coordinates are scaling factors in [X, Y, Z]
     T_Scale = [0.3, 0.3, 0.3]';
     % Sensor Biases (Sensor offsets in V)
+%     F_Bias = [0 0 0]'; %Force bias in [X, Y, Z] (V) - set to zeros for test
     F_Bias = [-0.2567, -0.1931, -0.1590]'; %Force bias in [X, Y, Z] (V)
 %     coordinates % Original code uses one set of values for all subjects
 %     and not sure how they got these values
@@ -81,6 +82,11 @@ function [Force, Torque] = recoverForces(Force, Torque, Markers)
                 yAxis = yAxis./norm(yAxis);  %Normalize to get y-axis unit vector
                 zAxis = cross(xAxis, yAxis); %Cross product to get the z-axis unit vector
                 zAxis = zAxis./norm(zAxis);
+                
+%                 hold on;
+%                 quiver(0,0,xAxis(1),xAxis(2));
+%                 quiver(0,0,yAxis(1),yAxis(2));
+%                 axis square;
             elseif all([dRL, dRB, dLB] < tolerance)
                 xAxis = FR - FL;             %Unnormalized x-axis
                 xAxis = xAxis./norm(xAxis);  %Normalize to get the x-axis unit vector
@@ -122,7 +128,8 @@ function [Force, Torque] = recoverForces(Force, Torque, Markers)
             %a rotation from Vicon coordinates to the sensor coordinates.
             %As rows, they form the rotation from sensor coordinates to
             %Vicon coordinates.
-            Rot = [xAxis, yAxis, zAxis]';
+%             Rot = [xAxis, yAxis, zAxis]'; % old code incorrect!
+            Rot = [xAxis, yAxis, zAxis];
             % Now we can return the forces and torques expressed in the Vicon
             % frame:
             Force(:,n) = Rot*Force(:,n);

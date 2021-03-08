@@ -45,494 +45,327 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
     mFT = 4/9.81; % (kg)
     
     % For check plots of Assist Beam and Solo Beam only
-    numrows = 4; numcols = 5;
-    plotind = 0;
+    if subj == 12 && plotCheck == 4
+        numrows = 5;
+    else
+        numrows = 4; 
+    end
+    numcols = 5;
+    plotind = 0; plot2ind = 0; % 2 figures, one for overground walking and one for beam-walking
     
-    if subj == 4 
+    if subj == 3
+        TrialData(30) = []; % bad processing in Nexus
+    elseif subj == 4 
         TrialData(16) = []; % bad processing in Nexus
+    elseif subj == 5 
+        TrialData(4) = []; % didn't record beginning of trial, must remove later trial before earlier or indices messed up
+        TrialData(2) = []; % huge outlier, leaned a lot on partner
     elseif subj == 7 
         TrialData(51) = []; % trial to repeat trial 23 bc no gait mat in trial 23. But doesn't matter for analysis, trial 23 looks fine.
     elseif subj == 14
         TrialData(26) = []; % notes say to skip this and replace with trial 51. trial looks fine in Nexus though...
     end
+    
     % Number of trials in the dataset:
     num_trials = length(TrialData);
     distA = nan*ones(size(num_trials)); distL = nan*ones(size(num_trials));
     
-    %% Find midline of beam for reference. Do it here so can use for
-    % later reference. Cycle through all beam-walking trials to
-    % get array to plot. Calculate mean as midline of beam.
-    temp.beamMidline = [];
-    plotind = 0;
-    for n = 1:num_trials
-        trial = str2num(TrialData(n).Info.Trial(end-1:end));
-        if ~isempty(strfind(TrialData(n).Info.Condition,'Beam')) || ~isempty(strfind(TrialData(n).Info.Condition,'beam')) % if beam-walking trial
-            if ~isempty(strfind(TrialData(n).Info.Condition,'Assist')) % if 2 person marker data set
-                Markers = medfiltFields(TrialData(n).Markers.POB,1);
-            else
-                Markers = medfiltFields(TrialData(n).Markers,1);
-            end
-            % Find start of trial as when foot on ground at beg of trial
-            % gets to its first peak
-            LHEE = Markers.LHEE;
-            RHEE = Markers.RHEE;
-            vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-            %% Get POB torso state values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-            if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                torsoY = Markers.C7(:,2)./1000;
-            else
-                torsoY = Markers.CLAV(:,2)./1000;
-            end
-            [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,1,torsoY);
-            % Special exceptions based on plots and find point by eye.
-            if subj == 3 
-                if trial == 27 || trial == 29
-                    start_idx = 500;
-                elseif trial == 49
-                    start_idx = 430;
-                end
-            elseif subj == 4
-                if trial == 1
-                    start_idx = 500;
-                elseif trial == 7
-                    start_idx = 600;
-                elseif trial == 22
-                    start_idx = 712;
-                elseif trial == 26
-                    start_idx = 620;
-                elseif trial == 29 || trial == 35
-                    start_idx = 500;
-                elseif trial == 46
-                    start_idx = 600;
-                end
-            elseif subj == 5
-                if trial == 3
-                    start_idx = 930;
-                elseif trial == 7
-                    start_idx = 812;
-                elseif trial == 18
-                    start_idx = 365;
-                elseif trial == 20
-                    start_idx = 497;
-                elseif trial == 23
-                    start_idx = 200;
-                elseif trial == 29
-                    start_idx = 314;
-                elseif trial == 37
-                    start_idx = 306;
-                elseif trial == 49
-                    start_idx = 270;
-                end
-            elseif subj == 8
-                if trial == 28
-                    start_idx = 240;
-                end
-            elseif subj == 9
-                if trial == 5
-                    start_idx = 290;
-                elseif trial == 6
-                    start_idx = 600;
-                elseif trial == 21
-                    start_idx = 261;
-                elseif trial == 43
-                    start_idx = 240;
-                end
-            elseif subj == 11
-                if trial == 12
-                    start_idx = 240;
-                end
-            elseif subj == 12
-                if trial == 9 || trial == 24 || trial == 25 || trial == 35
-                    start_idx = 500;
-                elseif trial == 43
-                    start_idx = 470;
-                end
-            elseif subj == 13
-                if trial == 1
-                    start_idx = 840;
-                elseif trial == 16
-                    start_idx = 500;
-                elseif trial == 17
-                    start_idx = 430;
-                elseif trial == 23
-                    start_idx = 350;
-                end
-            end
-            
-%             % Plot to check RHEE marker at start_idx looks reasonable for beam
-%             % midline (i.e. no issues with gaps)
-%             plotind = plotind + 1;
-%             subplot(4,5,plotind)
-%             plot(RHEE(:,1)),hold on,plot(start_idx,RHEE(start_idx,1),'x');
-%             title(TrialData(n).Info.Trial); ylabel('RHEE ML pos (m)');
-            
-            temp.beamMidline = [temp.beamMidline RHEE(start_idx,1)];
-            
-            TrialData(n).Results.beamMidline = temp.beamMidline;
-        end 
+    % Get mass of subj for ang momentum metric. Since compare solo to
+    % assist beam, only care subj's with dynamics data
+    if subj == 3
+        mass = 49.3; % kg
+        height = 1.60; % m
+    elseif subj == 4
+        mass = 56.9; % kg
+        height = 1.61; % m
+    elseif subj == 5
+        mass = 73.8; % kg
+        height = 1.64; % m
+    elseif subj == 6
+        mass = 78.2; % kg
+        height = 1.73; % m
+    elseif subj == 7
+        mass = 76.0; % kg
+        height = 1.82; % m
+    elseif subj == 8
+        mass = 67.5; % kg
+        height = 1.69; % m
+    elseif subj == 9
+        mass = 75.2; % kg
+        height = 1.68; % m
+    elseif subj == 10
+        mass = 55.8; % kg
+        height = 1.61; % m
+    elseif subj == 11
+        mass = 62.0; % kg
+        height = 1.64; % m
+    elseif subj == 12
+        mass = 67.2; % kg
+        height = 1.72; % m
+    elseif subj == 13
+        mass = 54.8; % kg
+        height = 1.61; % m
+    elseif subj == 14
+        mass = 69.3; % kg
+        height = 1.78; % m
     end
-    beamMidline = nanmean(temp.beamMidline)/1000;
-    beamMidlineSD = nanstd(temp.beamMidline)/1000;
-    
+        
     clear Markers
     temp = [];
 
     %% Trial Analysis Main Loop
     for n = 1:num_trials
+        clear start_idx stop_idx APMarkers LHEE RHEE RTOE LPSI RPSI beamMidline
         disp(['Processing ',TrialData(n).Info.Trial]);
         trial = str2num(TrialData(n).Info.Trial(end-1:end));
+        sample_rate = TrialData(n).Markers.samplerate;
+        
         % Check for trials to process
         if any(strcmpi(TrialData(n).Info.Condition, to_process))
-            %% -- Compute start and stop time of the trial. --- %%
-            clear start_idx stop_idx
+            %% Get markers from each trial type %%
             % Median filter all of the marker data to remove jumps. Then
             % calculate the start and stop indices for HHI analysis
             max_distance = TrialData(n).Info.Distance_Traveled.*25.4; %convert from in to mm
             if strcmpi(TrialData(n).Info.Condition, 'Assist Solo') % Assist Solo
                 Markers = TrialData(n).Markers;
-                if isfield(Markers,'AP') == 1 % Somet trials denoted assistant by AP while others did not
+                beamTrial = 0;
+                if isfield(Markers,'AP') == 1 % Some trials denoted assistant by AP while others did not
                     Markers.AP = medfiltFields(Markers.AP,1);
+                    TimeMarkers = Markers.AP;
+                    APMarkers = Markers.AP;
                     LHEE = Markers.AP.LHEE;
                     RHEE = Markers.AP.RHEE;
-                    vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                    %% Get AP torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-                    if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                        torsoY = Markers.AP.C7(:,2)./1000;
-                    else
-                        torsoY = Markers.AP.CLAV(:,2)./1000;
-                    end
-                    vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
-                    % Luke's method using max_distance
-                    [start_L,stop_L] = getHHIAnalysisWindow(Markers.AP,max_distance);
-                    % Check the assister's arm
-                    [start_L,stop_L] = checkArm(Markers.AP,start_L,stop_L);
-
-                    % New method
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.AP,vLHEEZfilt,0,vTorsoY);
-                else
+                    RTOE = Markers.AP.RTOE;
+                    LPSI = Markers.AP.LPSI;
+                    RPSI = Markers.AP.RPSI;
+                else % Trials not denote assistant as "AP"
                     Markers = medfiltFields(TrialData(n).Markers,1);
+                    TimeMarkers = Markers;
+                    APMarkers = Markers;
                     LHEE = Markers.LHEE;
                     RHEE = Markers.RHEE;
-                    vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                    %% Get AP torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-                    if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                        torsoY = Markers.C7(:,2)./1000;
-                    else
-                        torsoY = Markers.CLAV(:,2)./1000;
-                    end
-                    vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
-                    % Luke's method
-                    [start_L,stop_L] = getHHIAnalysisWindow(Markers,max_distance);
-                    % Check the assister's arm
-                    [start_L,stop_L] = checkArm(Markers,start_L,stop_L);
-
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,vTorsoY);
+                    RTOE = Markers.RTOE;
+                    LPSI = Markers.LPSI;
+                    RPSI = Markers.RPSI;
                 end
             elseif any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Assist Ground','Assist beam'}))
                 % Assist Ground, Assist Beam
                 Markers = TrialData(n).Markers;
                 Markers.AP = medfiltFields(Markers.AP,1);
                 Markers.POB = medfiltFields(Markers.POB,1);
+                TimeMarkers = Markers.POB;
+                APMarkers = Markers.AP;
                 LHEE = Markers.POB.LHEE;
                 RHEE = Markers.POB.RHEE;
-                vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                %% Get POB torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-                if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                    torsoY = Markers.POB.C7(:,2)./1000;
-                else
-                    torsoY = Markers.POB.CLAV(:,2)./1000;
-                end
-                vTorsoY = filtfilt(sos, g, diff(torsoY)); % Filter before use for algo to find analysis window
-                % Luke's method
-                [start_L,stop_L] = getHHIAnalysisWindow(Markers.POB,max_distance);
-                % Check the assister's arm
-%                 [start_L,stop_L] = checkArm(Markers.AP,start_L,stop_L);
-                
-                % My method
-                if strcmpi(TrialData(n).Info.Condition, 'Assist Ground')
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,0,vTorsoY); % use max distance method and not heel vertical height relative to beam when no beam-walking
-                else
-                    vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                    [start_idx,stop_idx,beamHt] = getHHIAnalysisWindow_MW(Markers.POB,vLHEEZfilt,1);
-                end
+                RTOE = Markers.POB.RTOE;
+                LPSI = Markers.POB.LPSI;
+                RPSI = Markers.POB.RPSI;
             else % Solo
                 % Solo Beam, Solo Ground
                 Markers = medfiltFields(TrialData(n).Markers,1);
+                TimeMarkers = Markers;
                 LHEE = Markers.LHEE;
                 RHEE = Markers.RHEE;
-                vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
-                %% Get POB torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-                if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                    torsoY = Markers.C7(:,2)./1000;
-                else
-                    torsoY = Markers.CLAV(:,2)./1000;
-                end
-                % Luke's method
-                [start_L,stop_L] = getHHIAnalysisWindow(Markers,max_distance);
-                if strcmpi(TrialData(n).Info.Condition, 'Assist Ground')
-%                     start_idx = start_L; stop_idx = stop_L; % use max distance method and not heel vertical height relative to beam when no beam-walking
-                    [start_idx,stop_idx] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,0,vTorsoY);
-                else
-                    [start_idx,stop_idx,beamHt] = getHHIAnalysisWindow_MW(Markers,vLHEEZfilt,1,torsoY);
-                end
+                RTOE = Markers.RTOE;
+                LPSI = Markers.LPSI;
+                RPSI = Markers.RPSI;
             end
             
-            %% Special exception trials that can't be fixed algorithmically
-            % found index by eye in Nexus
-            if subj == 3 
-                if trial == 2
-                    start_idx = start_idx + 20; % transient at beginning due to incorrect gapfill
-                    stop_idx = 1357;
-                elseif trial == 3
-                    stop_idx = 419; % took 2 tries in this trial, just count first one
-                elseif trial == 4
-                    stop_idx = 1447;
-                elseif trial == 13 
-                    stop_idx = 441;
-                elseif trial == 20
-                    stop_idx = 829;
-                elseif trial == 29
-                    stop_idx = 1329;
-                elseif trial == 36
-                    stop_idx = 1143;
-                elseif trial == 37
-                    stop_idx = 442;
-                elseif trial == 42
-                    stop_idx = 1376;
-                elseif trial == 46
-                    stop_idx = 1204;
-                end
-            elseif subj == 4
-                if trial == 1
-                    stop_idx = 1350;
-                elseif trial == 3
-                    stop_idx = 3792;
-                    start_idx = start_idx + 50; % transient at beginning due to incorrect gapfill
-                elseif trial == 7
-                    stop_idx = 2972;
-                elseif trial == 9
-                    stop_idx = 1773;
-                elseif trial == 11
-                    stop_idx = 3908;
-                elseif trial == 17 
-                    stop_idx = 1960;
-                elseif trial == 22
-                    stop_idx = 2224;
-                elseif trial == 24
-                    stop_idx = 2014;
-                elseif trial == 26
-                    stop_idx = 1776;
-                elseif trial == 35
-                    stop_idx = 1321;
-                elseif trial == 39
-                    stop_idx = 1413;
-                elseif trial == 40
-                    stop_idx = 1388;
-                elseif trial == 43
-                    stop_idx = 1520;
-                elseif trial == 45
-                    stop_idx = 1105;
-                elseif trial == 46
-                    stop_idx = 1261;
-                end
-            elseif subj == 5
-                if trial == 3
-                    stop_idx = 779;
-                elseif trial == 4
-                    stop_idx = 1537;
-                elseif trial == 7
-                    stop_idx = 885;
-                elseif trial == 13
-                    stop_idx = 685;
-                elseif trial == 17
-                    stop_idx = 1179;
-                elseif trial == 18
-                    stop_idx = 960;
-                elseif trial == 21
-                    stop_idx = 467;
-                elseif trial == 23
-                    stop_idx = 985;
-                elseif trial == 29
-                    stop_idx = 824;
-                elseif trial == 35
-                    stop_idx = 815;
-                elseif trial == 36
-                    stop_idx = 796;
-                elseif trial == 37
-                    stop_idx = 943;
-                elseif trial == 42
-                    stop_idx = 534;
-                elseif trial == 44
-                    stop_idx = 489;
-                elseif trial == 46
-                    stop_idx = 842;
-                elseif trial == 49
-                    stop_idx = 661;
-                end
-            elseif subj == 7
-                if trial == 3
-                    stop_idx = 1436;
-                elseif trial == 7
-                    stop_idx = 1176;
-                elseif trial == 20
-                    stop_idx = 1139;
-                elseif trial == 21
-                    stop_idx = 997;
-                elseif trial == 27
-                    stop_idx = 1146;
-                elseif trial == 37
-                    stop_idx = 963;
-                end
-            elseif subj == 8
-                if trial == 5
-                    stop_idx = 1042;
-                elseif trial == 8
-                    stop_idx = 987;
-                elseif trial == 9
-                    stop_idx = 807;
-                elseif trial == 10
-                    stop_idx = 712;
-                elseif trial == 11
-                    stop_idx = 953;
-                elseif trial == 13
-                    stop_idx = 807;
-                elseif trial == 15
-                    stop_idx = 810;
-                elseif trial == 21
-                    stop_idx = 774;
-                elseif trial == 23
-                    stop_idx = 838;
-                elseif trial == 24
-                    stop_idx = 764;
-                elseif trial == 28
-                    stop_idx = 772;
-                elseif trial == 36
-                    stop_idx = 822;
-                elseif trial == 39
-                    stop_idx = 592;
-                elseif trial == 42
-                    stop_idx = 634;
-                elseif trial == 46
-                    stop_idx = 757;
-                elseif trial == 47
-                    stop_idx = 814;
-                elseif trial == 48
-                    stop_idx = 693;
-                end
-            elseif subj == 9
-                if trial == 1
-                    stop_idx = 941;
-                elseif trial == 5
-                    stop_idx = 1659;
-                elseif trial == 6
-                    stop_idx = 1564;
-                elseif trial == 17
-                    stop_idx = 1265;
-                elseif trial == 20
-                    stop_idx = 1313;
-                elseif trial == 22
-                    stop_idx = 1396;
-                elseif trial == 28
-                    stop_idx = 1258;
-                elseif trial == 33
-                    stop_idx = 1173;
-                elseif trial == 39
-                    stop_idx = 1202;
-                elseif trial == 46
-                    stop_idx = 1212;
-                elseif trial == 49
-                    stop_idx = 879;
-                elseif trial == 50
-                    stop_idx = 1093;
-                end
-            elseif subj == 10
-                if trial == 3
-                    stop_idx = 1554;
-                elseif trial == 11
-                    stop_idx = 807;
-                elseif trial == 23
-                    stop_idx = 1116;
-                elseif trial == 24
-                    stop_idx = 948;
-                elseif trial == 45
-                    stop_idx = 1028;
-                elseif trial == 47
-                    stop_idx = 885;
-                end
-            elseif subj == 13
-                if trial == 9
-                    stop_idx = 549;
-                elseif trial == 10
-                    stop_idx = 1322;
-                elseif trial == 34
-                    stop_idx = 558;
-                end
-            elseif subj == 14
-                if trial == 8
-                    stop_idx = 437;
-                end
+            %% Time window of analysis
+            
+            if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Assist beam','Solo Beam','Solo beam'}))
+                beamTrial = 1;
+            else
+                beamTrial = 0;
+            end
+            
+            % Torso pos used for finding start/stop of trial
+            clear torso torsoFilt vTorso vTorsoFilt aTorso aTorsoFilt
+            % Get torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
+            if (subj == 4 && trial == 7) || (subj == 5 && (trial == 21 || trial == 31 || trial == 42)-1) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
+                torso = TimeMarkers.C7./1000;
+            else
+                torso = TimeMarkers.CLAV./1000;
+            end
+            
+            vLHEEZfilt = filtfilt(sos, g, diff(LHEE(:,3))); 
+            
+            % Luke's method using max_distance
+            [start_L,stop_L] = getHHIAnalysisWindow(TimeMarkers,max_distance);
+            % Check the assister's arm
+            if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Assist beam', 'Assist Ground', 'Assist Solo'}))
+                [start_L,stop_L] = checkArm(APMarkers,start_L,stop_L);
             end
 
+            % New method
+            [start_idx,stop_idx,temp.ht,temp.midline] = getHHIAnalysisWindow_MW(TimeMarkers,vLHEEZfilt,beamTrial,torso,subj,trial);
+            TrialData(n).Results.ht = temp.ht; % (m)
+            TrialData(n).Results.midline = temp.midline; % (m)
+            
+            % Store torso state for later analysis/plotting
+            TrialData(n).Results.torso = torso(start_idx:stop_idx,:); % (m)
+            for k = 1:3
+                torsoFilt(:,k) = filtfilt(sos, g, torso(:,k)); % (m) % Use only for taking deriv.
+            end
+            vTorso = diff(torsoFilt).*sample_rate; 
+            % Filter vel before take derivative. 
+            for k = 1:3
+                vTorsoFilt(:,k) = filtfilt(sos, g, vTorso(:,k));
+            end
+            aTorso = diff(vTorsoFilt).*sample_rate;
+            % Filter acc to use for regression later
+            for k = 1:3
+                aTorsoFilt(:,k) = filtfilt(sos, g, aTorso(:,k));
+            end
+            % Trim data to that which corresponds to force data
+            vTorsoFilt = vTorsoFilt(start_idx+1:stop_idx+1,:);
+            aTorsoFilt = aTorsoFilt(start_idx+2:stop_idx+2,:);
+            
+            % Store torso derivatives for later analysis/plotting
+            TrialData(n).Results.vTorso = vTorso(start_idx+1:stop_idx+1,:);
+            TrialData(n).Results.aTorso = aTorso(start_idx+2:stop_idx+2,:);
+            
             %% Construct the time axis
-            sample_rate = TrialData(n).Markers.samplerate;
+            clear time
             time = 0:(stop_idx - start_idx);
             time = time./sample_rate;
-            % Save Lheel pos used for finding window
-            LHEEZ = LHEE(:,3);
-            RHEEZ = RHEE(:,3); 
-            % Calculations depending on force data, 2 person marker set
-            if ~isempty(strfind(TrialData(n).Info.Condition, 'Assist'))
+            
+            %% Get POB COM position as avg L and R PSIS % don't use this for now bc lots of work to check marker fill correct for both PSIS markers all trials during start-stop period
+            COM = (LPSI + RPSI)/(2*1000); % Take mean
+            
+            %% Calculate kinematic metrics 
+            % Use the medfiltered data from Markers struct
+            if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam','Assist beam','Solo Beam','Solo beam','Assist Ground', 'Solo Ground'}))
+                %% Lateral sway and hip and leg angles
+                sway = torso(start_idx:stop_idx,1);
+                if any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam', 'Solo Ground'}))                   
+                    % Also collect thorax (approx with
+                    % projection of line between two thorax markers) ang
+                    % rotation for POB. Calculate leg segment obliq by
+                    % 1) project all malleolus markers and PSIS markers
+                    % into frontal plane, 2) take midpoint 2 malleoli, 3)
+                    % take midpoint PSIS markers, 4) take vector between
+                    % the two points and get angle in frontal plane
+                    TrialData(n).Results.pelvicObliq = TrialData(n).Markers.LPelvisAngles(start_idx:stop_idx,1)./1000; % L and R pelvis angles are exact mirror images of each other. Pelvic data not really necessary, just look at thorax and leg segments for now     
+                    % Leg segment angle (only care x and z components since
+                    % will look at frontal plane angle
+                    temp.mANK(:,1) = mean([Markers.LANK(start_idx:stop_idx,1) Markers.RANK(start_idx:stop_idx,1)],2)./1000;
+                    temp.mANK(:,3) = mean([Markers.LANK(start_idx:stop_idx,3) Markers.RANK(start_idx:stop_idx,3)],2)./1000;
+                    temp.mPSIS(:,1) = mean([Markers.LPSI(start_idx:stop_idx,1) Markers.RPSI(start_idx:stop_idx,1)],2)./1000;
+                    temp.mPSIS(:,3) = mean([Markers.LPSI(start_idx:stop_idx,3) Markers.RPSI(start_idx:stop_idx,3)],2)./1000;
+                    temp.legVec = temp.mPSIS-temp.mANK;
+                    temp = [];
+                else % Force data exists, two people marker set
+                    % Also collect thorax (approx with
+                    % projection of line between two thorax markers) ang
+                    % rotation for POB
+                    if isfield(Markers.POB,'LPelvisAngles')
+                        TrialData(n).Results.pelvicObliq = TrialData(n).Markers.POB.LPelvisAngles(start_idx:stop_idx,1); % L and R pelvis angles are exact mirror images of each other  
+                    else
+                        TrialData(n).Results.pelvicObliq = nan;
+                    end
+                    % Leg segment angle (only care x and z components since
+                    % will look at frontal plane angle
+                    temp.mANK(:,1) = mean([Markers.POB.LANK(start_idx:stop_idx,1) Markers.POB.RANK(start_idx:stop_idx,1)],2)./1000;
+                    temp.mANK(:,3) = mean([Markers.POB.LANK(start_idx:stop_idx,3) Markers.POB.RANK(start_idx:stop_idx,3)],2)./1000;
+                    temp.mPSIS(:,1) = mean([Markers.POB.LPSI(start_idx:stop_idx,1) Markers.POB.RPSI(start_idx:stop_idx,1)],2)./1000;
+                    temp.mPSIS(:,3) = mean([Markers.POB.LPSI(start_idx:stop_idx,3) Markers.POB.RPSI(start_idx:stop_idx,3)],2)./1000;
+                    temp.legVec = temp.mPSIS-temp.mANK;
+                    temp = [];
+                end
+                temp = [];
+                
+                sway = sway - TrialData(n).Results.midline; % same as torso pos with midline removed
+                TrialData(n).Results.beamerSway = sway;
+                TrialData(n).Results.beamerCOMSway = COM(start_idx:stop_idx,1);
+                
+                %% Distance is calculated as the difference between the
+                % forward positions of the Rheel at the beginning of the
+                % analysis window and the heel of the forward foot at the
+                % end of the analysis window. Do only for beam trials!
+                if any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam', 'Assist Beam','Assist beam'}))
+                    dist = torso(end,2) - torso(1,2); % torso is already cut to use start and stop indices
+                    if dist >= 3.65 % length of beam
+                        distA(n) = 3.65;
+                    else
+                        distA(n) = dist; 
+                    end
+                    TrialData(n).Results.totalDistance = distA(n); 
+                    %% Luke's method on finding beam distance
+                    if any(strcmpi(TrialData(n).Info.Condition,'Solo Beam'))
+                        torsoY = TrialData(n).Markers.CLAV(:,2);
+                    else
+                        torsoY = TrialData(n).Markers.POB.CLAV(:,2);
+                    end
+                    tempD = torsoY(stop_L) - torsoY(start_L);
+                    if (TrialData(n).Info.Distance_Traveled == 144)
+                        distL(n) = 144*25.4;
+                    else
+                        distL(n) = tempD;
+                    end
+                else
+                    TrialData(n).Results.totalDistance = nan;
+                    distA(n) = nan; distL(n) = nan;
+                end
+                
+                %% Angular state and momentum of POB
+                clear angTorso wTorso alphaTorso I Ly
+                angTorso = atan2(torso(:,3),torso(:,1)-TrialData(n).Results.midline); % positive CCW
+                wTorso = diff(filtfilt(sos,g,angTorso)).*sample_rate; % positive CCW to be opp of torque, then alpha is in phase torque (T = I*alpha)
+                alphaTorso = diff(filtfilt(sos,g,wTorso)).*sample_rate;
+                TrialData(n).Results.angTorso = angTorso(start_idx:stop_idx);
+                TrialData(n).Results.wTorso = wTorso(start_idx+1:stop_idx+1);
+                TrialData(n).Results.alphaTorso = alphaTorso(start_idx+2:stop_idx+2);
+                I = mass*height^2/3;
+                TrialData(n).Results.Ly = I*TrialData(n).Results.wTorso; 
+                
+                %% We also store the average speed of the trial, and a
+                % logical value indicating if the trial was completed.
+                TrialData(n).Results.avgSpeed = TrialData(n).Results.totalDistance./time(end); % time has been trimmed to cover start to stop only
+                TrialData(n).Results.completed = (TrialData(n).Info.Distance_Traveled == 144);
+
+            elseif strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
+                TrialData(n).Results.vTorso = nan;
+                TrialData(n).Results.aTorso = nan;
+                TrialData(n).Results.angTorso = nan;
+                TrialData(n).Results.wTorso = nan;
+                TrialData(n).Results.alphaTorso = nan;
+                TrialData(n).Results.Ly = nan;
+                TrialData(n).Results.totalDistance = nan;
+                TrialData(n).Results.avgSpeed = nan;
+                TrialData(n).Results.pelvicObliq = nan;
+                distA(n) = nan; distL(n) = nan;
+                TrialData(n).Results.beamerSway = nan;
+            end
+            
+            %% Calculations depending on force data, 2 person marker set
+            if ~isempty(strfind(TrialData(n).Info.Condition, 'Assist')) % Check there is an assistant
+                % Do some of this analysis for Assist Solo
                 %% Window and Transpose Force and Marker Data %% 
                 % Now that we have the start and stop indices, we can get the
                 % force data and the marker data for the time when the subject
-                % is walking.
+                % is walking.               
                 
-                % The Markers we need are the Right Shoulder annd Finger of
-                % the Assistance Provider (m)
-                if isfield(Markers,'AP') == 1                   
-                    RSHO = Markers.AP.RSHO(start_idx:stop_idx, :)./1000;
-                    RFIN = Markers.AP.RFIN(start_idx:stop_idx, :)./1000;
-                else
-                    RSHO = Markers.RSHO(start_idx:stop_idx, :)./1000;
-                    RFIN = Markers.RFIN(start_idx:stop_idx, :)./1000;
-                end
-                
-                if isfield(Markers,'POB') == 1
-                    LSHO = Markers.POB.LSHO(start_idx:stop_idx, :)./1000;
-                    if isfield(Markers.POB,'LFIN') == 1
-                        LFIN = Markers.POB.LFIN(start_idx:stop_idx, :)./1000; 
-                    else
-                        LFIN = nan;
-                    end
-                end
-
                 % Get the sampling rate for the forces                
                 force_rate = TrialData(n).Forces.samplerate;
                 
-                clear Force Torque
-                % Collect the forces and torques into the initialized arrays
-                for k = 1:3 % for each direction
+                clear Force Torque F T
+                % Collect the force and torque voltages into the initialized arrays
+                for k = 1:3 % for each direction                  
                     %Downsample the forces and torques to be at the same
                     %sampling rate as the marker data
                     F = resample(TrialData(n).Forces.(force_names{k}), sample_rate, force_rate);
                     T = resample(TrialData(n).Forces.(torque_names{k}), sample_rate, force_rate);
-                    % Median filter forces to reduce noise
+                    % Median filter forces to reduce noise - why do this
+                    % after downsampling? Perhaps to be similar to
+                    % processing of marker data?
                     F = medfilt1(F);
                     T = medfilt1(T);
                     % Limit the forces and torques to the same analysis window
                     % as the marker data
                     Force(:,k) = F(start_idx:stop_idx);
-                    Torque(:,k) = T(start_idx:stop_idx);
+                    Torque(:,k) = T(start_idx:stop_idx); % This is torque on sensor or IP not on POB COM
                 end
-                
-                % Checked for all trials with avail video assist beam
-                % Fx volt is negative when in shear away from center of
-                % sensor, so must negate sign before processing. Also
-                % negate Fy volt bc that is consistent with setup for
-                % BL experiment fall 2019. Do this before recoverForces
-                % projects force signals into lab CS. 3/30/20 MW.
-                Force(:,1) = -Force(:,1);
-                Force(:,2) = -Force(:,2);
                 
                 if isfield(Markers,'FH')
                     % Median filter force handle MARKERS to remove jumps
@@ -550,100 +383,244 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     Force = Force';
                 end
                 
+                % Up to now all forces are in sensor's coordinate frame,
+                % change it to the POB's coordinate frame so it's force
+                % felt by person. This will then be consistent for the
+                % model that fits torque felt by person (on the person) to
+                % torso state for positive passive elements. Do this after 
+                % recoverForces projects force signals into lab CS since
+                % that code subtracts off a signed baseline voltage
+                % For sensor, tension < 0 for Fx and Fy and tension > 0 for
+                % Fz. For POB, we want tension < 0 for Fx and tension > 0
+                % for Fy and Fz.
+                Force(:,2) = -Force(:,2);
+                % Store the data
+                TrialData(n).Results.Force = Force;
+                
                 % Need to subtract out force of gravity on FH for vertical
                 % dir and subtract out force of accelerating mass of FH in
-                % each direction (?)
+                % each direction (?)              
                 
-%% --------------- WORK and POWER ANALYSIS ------------------------------%%
-                % Now, filter the force vector to obtain smooth
-                % results. 
-                clear rFin rFilt vFin vFilt RASIFilty armAsst armPOB POBpower
-                for k = 1:3
-                    Force(:,k) = filtfilt(sos, g, Force(:,k));
-                    rFilt(:,k) = filtfilt(sos, g, RFIN(:,k)); 
-                end
-                rFin = RFIN; % Don't double-filter!
- 
-                % Look at each direction separately. Must filter before
-                % take deriv. Again, here the signs are reversed for force
-                % bc it's force on POB
-                vFin = diff(rFilt).*sample_rate;
-                for i = 1:3
-                    intPt_power(:,i) = Force(2:end,i).*vFin(:,i); % P < 0 for motor because F > 0 for tension and v > 0 for move to the right
-                    if i == 1 % x axis, check worst case drift effect of 1.5N
-                        IP_powerX_hi(1,:) = (Force(2:end,i)+1.5).*vFin(:,i);
-                        IP_powerX_lo(1,:) = (Force(2:end,i)-1.5).*vFin(:,i);
-                    end
-                    intPt_cumWork(:,i) = cumsum(intPt_power(:,i))./sample_rate;
-                    intPt_netWork_norm(i) = sum(intPt_power(:,i))/sample_rate/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
-                end
-                
-                %% Calc xcorr Fint to variables. Fit Fint to variables
-                
-                for i = 1:3
-                    vFilt(:,i) = filtfilt(sos, g, vFin(:,i));
-                end
-                aFin = diff(vFilt).*sample_rate;               
-                
-                if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
-                    clear torso torsoFilt vTorso vTorsoFilt aTorso
-                    %% Get POB torso state values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-                    if (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                        torso = Markers.POB.C7(start_idx:stop_idx,:)./1000;
+                %% --------------- Dynamics ANALYSIS --------------------%%
+                if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo') % Do only for Assist
+                    %% Get markers used for power calculations
+                    if isfield(Markers,'AP') == 1                   
+                        RSHO = Markers.AP.RSHO(start_idx:stop_idx, :)./1000;
+                        RFIN = Markers.AP.RFIN(start_idx:stop_idx, :)./1000;
                     else
-                        torso = Markers.POB.CLAV(start_idx:stop_idx,:)./1000;
-                    end
-                    for k = 1:3
-                        torsoFilt(:,k) = filtfilt(sos, g, torso(:,k)); % (m) % Use only for taking deriv.
+                        RSHO = Markers.RSHO(start_idx:stop_idx, :)./1000;
+                        RFIN = Markers.RFIN(start_idx:stop_idx, :)./1000;
                     end
 
-                    % Store torso pos for later analysis/plotting
-                    TrialData(n).Results.torso = torso; % (m)
-                    vTorso = diff(torsoFilt).*sample_rate; 
-                    % Filter vel before take derivative
-                    for k = 1:3
-                        vTorsoFilt(:,k) = filtfilt(sos, g, vTorso(:,k));
+                    if isfield(Markers,'POB') == 1
+                        LSHO = Markers.POB.LSHO(start_idx:stop_idx, :)./1000;
+                        LFIN = Markers.POB.LFIN./1000; 
+                    else
+                        LSHO = Markers.LSHO(start_idx:stop_idx, :)./1000;
+                        LFIN = Markers.LFIN./1000;
                     end
-                    aTorso = diff(vTorsoFilt).*sample_rate;
-                    % Store torso derivatives for later analysis/plotting
-                    TrialData(n).Results.vTorso = vTorso;
-                    TrialData(n).Results.aTorso = aTorso;
+
+                    % Filter kinematics and force
+                    clear ForceFilt rFin lFin rFilt lFilt vFin vFinFilt RASIFilty armAsst armPOB POBpower IP_power_XZ
+                    for k = 1:3
+                        ForceFilt(:,k) = filtfilt(sos, g, Force(:,k));
+                        rFilt(:,k) = filtfilt(sos, g, RFIN(:,k)); 
+                        lFilt(:,k) = filtfilt(sos, g, LFIN(:,k)); 
+                        vFin(:,k) = diff(lFilt(:,k)).*sample_rate;
+                    end
+                    rFin = RFIN; % Don't double-filter! Use filtered pos only for taking derivatives and doing regression and corr later
+                    lFin = LFIN(start_idx:stop_idx,:);
+                    
+%                   vFin = diff(rFilt).*sample_rate;
+                    TrialData(n).Results.IP = lFin; 
+                    for i = 1:3
+                        vFinFilt(:,i) = filtfilt(sos, g, vFin(:,i));
+                        aFin = diff(vFinFilt).*sample_rate; 
+                    end
+ 
+                    % Trim data to that which corresponds to force
+                    vFin = vFin(start_idx+1:stop_idx+1,:);
+                    vFinFilt = vFinFilt(start_idx+1:stop_idx+1,:);
+                    aFin = aFin(start_idx+1:stop_idx+1,:);
+                    
+                    %% Power exchange at IP in x, z, and xz vector dir's
+                    clear IP_power IP_powerX_hi IP_powerX_lo IP_cumWork  IP_netWork_norm IP_power_XZ 
+                    % Don't filter for power calc's
+                    for i = 1:3
+                        IP_power(:,i) = Force(:,i).*vFin(:,i); % P < 0 dissipates energy (F < 0 for tension on POB and v > 0 for move to the right)
+                        if i == 1 % x axis, check worst case drift effect of 1.5N
+                            IP_powerX_hi(1,:) = (Force(:,i)+1.5).*vFin(:,i);
+                            IP_powerX_lo(1,:) = (Force(:,i)-1.5).*vFin(:,i);
+                        end
+                        IP_cumWork(:,i) = cumsum(IP_power(:,i))./sample_rate;
+                        IP_netWork_norm(i) = sum(IP_power(:,i))/sample_rate/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
+                    end
+                    
+                    % Power in 2D vector's direction
+                    for j = 1:length(vFin)
+                        IP_power_XZ(j) = dot(Force(j,[1 3]),vFin(j,[1 3]));
+                    end
+                    
+                    %% Power on POB in x, z, and xz vector dir's
+                    clear POB_power POB_powerX_hi POB_powerX_lo POB_cumWork  POB_netWork_norm POB_power_XZ 
+                    % Don't filter for power calc's
+                    for i = 1:3
+                        POB_power(:,i) = Force(:,i).*TrialData(n).Results.vTorso(:,i); % P < 0 dissipates energy (F < 0 for tension on POB and v > 0 for move to the right)
+                        if i == 1 % x axis, check worst case drift effect of 1.5N
+                            POB_powerX_hi(1,:) = (Force(:,i)+1.5).*TrialData(n).Results.vTorso(:,i);
+                            POB_powerX_lo(1,:) = (Force(:,i)-1.5).*TrialData(n).Results.vTorso(:,i);
+                        end
+                        POB_cumWork(:,i) = cumsum(POB_power(:,i))./sample_rate;
+                        POB_netWork_norm(i) = sum(POB_power(:,i))/sample_rate/(time(end)-time(1)); % One number characterizing whole trial overall, normalize by time length of trial
+                    end
+                    
+                    % Power in 2D vector's direction
+                    for j = 1:length(TrialData(n).Results.vTorso)
+                        POB_power_XZ(j) = dot(Force(j,[1 3]),TrialData(n).Results.vTorso(j,[1 3]));
+                    end
+                    
+                    %% Calculate torque and ang power on POB. Take xz vector for moment arm and force
+                    % Examine torque about torso, COM, and beam (heel)
+                    clear rTorso rCOM theta rTorsoxz rGdxz rCOMht
+                    rTorso = lFin - torso(start_idx:stop_idx,:);
+%                     rTorso = rFin - torso(start_idx:stop_idx,:);
+    %                 rCOM = rFin - COM(start_idx:stop_idx,:); % Need to check
+    %                 COM markers ID'ed correctly before do this calculation
+                    if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam', 'Assist beam'})) % Use beam midline
+                        rGd = lFin - [TrialData(n).Results.midline*ones(length(lFin),1) torso(start_idx:stop_idx,2) TrialData(n).Results.ht*ones(length(lFin),1)]; 
+%                         rGd = rFin - [TrialData(n).Results.midline*ones(length(rFin),1) torso(start_idx:stop_idx,2) TrialData(n).Results.ht*ones(length(rFin),1)]; 
+                    else % Overgound, assume axis is on ground at z = 0
+                        rGd = lFin - [TrialData(n).Results.midline*ones(length(lFin),1) torso(start_idx:stop_idx,2) zeros(length(lFin),1)]; % Use midline calculated from mean torso lateral pos during period of interest
+%                         rGd = rFin - [TrialData(n).Results.midline*ones(length(rFin),1) torso(start_idx:stop_idx,2) zeros(length(rFin),1)]; % Use midline calculated from mean torso lateral pos during period of interest
+                    end
+
+                    % Find angle between two vec's in xz plane to keep for
+                    % reference. Also keep moment arm         
+                    for i = 1:length(rGd)
+                        rTorsoxz(i) = norm(rTorso(i,[1 3]));
+                        rGdxz(i) = norm(rGd(i,[1 3]));
+                    end
+                    theta = -atan2(Force(:,3),Force(:,1)) + atan2(rTorso(:,3),rTorso(:,1));
+                    TrialData(n).Results.maTorso = rTorsoxz'.*sin(theta);
+                    theta = -atan2(Force(:,3),Force(:,1)) + atan2(rGd(:,3),rGd(:,1));
+                    TrialData(n).Results.maGd = rGdxz'.*sin(theta);
+
+                    % Get torque from 3D cross-product and take My component
+                    % Also calc worst case drift scenario
+                    temp = cross(rTorso,Force);
+                    TrialData(n).Results.TyTorso = temp(:,2); % Torque about y axis
+    %                 TrialData(n).Results.torqueCOM = cross(rCOM,Force);               
+                    temp = cross(rGd,Force);               
+                    TrialData(n).Results.TyGd = temp(:,2); % Total torque on POB
+                    clear r TyFx TyFz
+                    r = TrialData(n).Results.IP - [TrialData(n).Results.midline 0 0];
+                    TrialData(n).Results.TyFx = r(:,3).*TrialData(n).Results.Force(:,1);
+                    TrialData(n).Results.TyFz = -r(:,1).*TrialData(n).Results.Force(:,3);
+                
+                    % Compute torque due to gravity acting at 1/2 of height
+                    % of POB
+                    rCOMht = height/2;
+                    TrialData(n).Results.Tg = rCOMht*cos(TrialData(n).Results.angTorso)*9.81*mass;
+                    
+                    TrialData(n).Results.TyExt = TrialData(n).Results.TyGd - TrialData(n).Results.Tg; % Is external torque (applied by partner) the difference between net torque and gravitational torque?
+%                     % Check sign convention
+%                     ind = find(temp(:,2) > 0,1,'first');
+%                     quiver(0,0,rGd(ind,1),rGd(ind,3)),hold on,quiver(rGd(ind,1),rGd(ind,3),Force(ind,1),Force(ind,3));
+                    
+                    % Worst case drift scenarios
+                    clear temp
+                    temp.force = Force;
+                    % 1: Fx drift upper limit, Fz drift upper limit
+                    temp.force(:,1) = Force(:,1)+1.5;
+                    temp.force(:,3) = Force(:,3)+5.7;
+                    temp.torque = cross(rTorso,temp.force);
+                    TrialData(n).Results.TyGdXhZh = temp.torque(:,2);
+                    % 2: Fx drift lower limit, Fz drift upper limit
+                    temp.force(:,1) = Force(:,1)-1.5;
+                    temp.force(:,3) = Force(:,3)+5.7;
+                    temp.torque = cross(rTorso,temp.force);
+                    TrialData(n).Results.TyGdXlZh = temp.torque(:,2);
+                    % 3: Fx drift upper limit, Fz drift lower limit
+                    temp.force(:,1) = Force(:,1)+1.5;
+                    temp.force(:,3) = Force(:,3)-5.7;
+                    temp.torque = cross(rTorso,temp.force);
+                    TrialData(n).Results.TyGdXhZl = temp.torque(:,2);
+                    % 4: Fx drift lower limit, Fz drift lower limit
+                    temp.force(:,1) = Force(:,1)-1.5;
+                    temp.force(:,3) = Force(:,3)-5.7;
+                    temp.torque = cross(rTorso,temp.force);
+                    TrialData(n).Results.TyGdXlZl = temp.torque(:,2);  
+                    temp = []
+
+                    % Power
+                    TrialData(n).Results.angP = (TrialData(n).Results.TyGd).*TrialData(n).Results.wTorso;
+                    TrialData(n).Results.angPFx = (TrialData(n).Results.TyFx).*TrialData(n).Results.wTorso;
+                    TrialData(n).Results.angPFz = (TrialData(n).Results.TyFz).*TrialData(n).Results.wTorso;
 
                     %% Calculate xcorr for a variety of signals to compare to LT work and to adjust regression if needed
                     % for xcorr(x,y), y lags x if lag < 0;
+
+                    % Use filtered signals before xcorr so corr is not driven by noise
                     
-                    % FIP to torso disp
-                    % Must remove means before doing xcorr. Not matter if
-                    % remove midline of beam or walking path correctly for
-                    % xcorr, removing mean no matter what
-                    temp.Fx = Force(:,1) - nanmean(Force(:,1));
-                    temp.swayX = torso(:,1) - nanmean(torso(:,1)); % This is not displacement! This is position with mean removed!
-                    [r, lags] = xcorr(temp.Fx,temp.swayX,sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
-                    ind = find(abs(r) == max(abs(r))); % Look mag of xcorr
-                    if length(ind) > 1 % Not sure what to do here, just flag it for now
-                        msg = sprintf('More than one max for xcorr!');
-                    end
-                    TrialData(n).Results.lagFIPTorsoX = lags(ind)/sample_rate;
-                    TrialData(n).Results.xcorrFIPTorsoX = r(ind);
-                    clear r lags ind
+                    % ML/x dir
+                    % F_IP to POB torso disp
+                    temp.swayX = torsoFilt(start_idx:stop_idx,1) - nanmean(torsoFilt(start_idx:stop_idx,1)); % This is not displacement! This is position with mean removed!
+                    [temp.a,temp.b] = getXcorr(ForceFilt(:,1),temp.swayX,sample_rate);
+                    TrialData(n).Results.lagFIPTorsoX = temp.a;
+                    TrialData(n).Results.xcorrFIPTorsoX = temp.b;
+                    temp = [];
                   
-                    % FIP to POB vTorso in ML dir only                    
-                    [r, lags] = xcorr(temp.Fx(2:end),vTorso(:,1),sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
-                    ind = find(abs(r) == max(abs(r)));
-                    TrialData(n).Results.lagFIPvTorsoX = lags(ind)/sample_rate;
-                    TrialData(n).Results.xcorrFIPvTorsoX = r(ind);
-                    clear r lags ind
-                    
-                    % vIP to POB vTorso in ML dir only. Use vIn that's not
-                    % double-filtered.                 
-                    [r, lags] = xcorr(vFin(:,1),vTorso(:,1),sample_rate,'normalized'); % Constrain window for xcorr to +/- 1s
-                    ind = find(abs(r) == max(abs(r)));
-                    TrialData(n).Results.lagvIPvTorsoX = lags(ind)/sample_rate;
-                    TrialData(n).Results.xcorrvIPvTorsoX = r(ind);
-                    clear r lags ind
+                    % F_IP to POB vTorso in ML dir only       
+                    [temp.a,temp.b] = getXcorr(ForceFilt(:,1),vTorsoFilt(:,1),sample_rate);
+                    TrialData(n).Results.lagFIPvTorsoX = temp.a;
+                    TrialData(n).Results.xcorrFIPvTorsoX = temp.b;
                     temp = [];
                     
-                    %% Fit Fint to torso state var's 
+                    % vIP to vTorso in ML dir only. 
+                    [temp.a,temp.b] = getXcorr(vFinFilt(:,1),vTorsoFilt(:,1),sample_rate);
+                    TrialData(n).Results.lagvIPvTorsoX = temp.a;
+                    TrialData(n).Results.xcorrvIPvTorsoX = temp.b;
+                    temp = [];
+                    
+                    % Vert/z dir
+                    % F_IP to POB torso disp
+                    temp.pos = torsoFilt(start_idx:stop_idx,3) - nanmean(torsoFilt(start_idx:stop_idx,3)); % This is not displacement! This is position with mean removed!
+                    [temp.a,temp.b] = getXcorr(ForceFilt(:,3),temp.pos,sample_rate);
+                    TrialData(n).Results.lagFIPTorsoZ = temp.a;
+                    TrialData(n).Results.xcorrFIPTorsoZ = temp.b;
+                    temp = [];
+                  
+                    % F_IP to POB vTorso in ML dir only       
+                    [temp.a,temp.b] = getXcorr(ForceFilt(:,3),vTorsoFilt(:,3),sample_rate);
+                    TrialData(n).Results.lagFIPvTorsoZ = temp.a;
+                    TrialData(n).Results.xcorrFIPvTorsoZ = temp.b;
+                    temp = [];
+                    
+                    % vIP to vTorso in ML dir only. 
+                    [temp.a,temp.b] = getXcorr(vFinFilt(:,3),vTorsoFilt(:,3),sample_rate);
+                    TrialData(n).Results.lagvIPvTorsoZ = temp.a;
+                    TrialData(n).Results.xcorrvIPvTorsoZ = temp.b;
+                    temp = [];
+                    
+                    % Ty corr to torso state
+                    % ang disp
+                    T = filtfilt(sos, g, TrialData(n).Results.TyGd);
+                    temp.ang = filtfilt(sos, g, TrialData(n).Results.angTorso);
+                    [temp.a,temp.b] = getXcorr(T,temp.ang,sample_rate);
+                    TrialData(n).Results.lagTyAngTorso = temp.a;
+                    TrialData(n).Results.xcorrTyAngTorso = temp.b;
+                    temp = [];
+
+                    % ang vel
+                    temp.w = filtfilt(sos,g,TrialData(n).Results.wTorso);
+                    [temp.a,temp.b] = getXcorr(T,temp.w,sample_rate);
+                    TrialData(n).Results.lagTyWTorso = temp.a;
+                    TrialData(n).Results.xcorrTyWTorso = temp.b;
+                    temp = [];    
+                    
+                    clear T
+                    
+                    %% Fit F_IP to torso state var's 
 
                     % Regress per direction. Regress
                     % iteratively, throwing away any variables with coeff's
@@ -658,61 +635,73 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     % away from IP. For fit model, -Fx/y/z is consistent with a
                     % positive spring or damper restoring person to midline
                     % or starting position
+                    
+                    % X/ML dir %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     clear m;
-                    lag = floor(.157*sample_rate); % calculated from xcorr analysis 
-                    i = 1; % Just do for x dir. Should write code to use beamHt reference if want to fit model in vertical/z dir. Not make sense to fit model to AP/y dir.
-                    ref = beamMidline; 
+                    lag = floor(.157*sample_rate); % calculated from xcorr analysis
+                    i = 1; % Just do for x dir. Not make sense to fit model to AP/y dir since no equilibrium position in y dir.
+                    ref = TrialData(n).Results.midline; 
                     % No lag
-                    m = [aTorso(:,i) vTorso(2:end,i) torso(3:end,i)-ref ones(size(aTorso(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
-                    % Lag of 157ms
-                    mlag = [aTorso(lag:end,i) vTorso(lag+1:end,i) torso(lag+2:end,i)-ref ones(size(aTorso(lag:end,i)))]; 
-
-                    [cx_torso,rsqx_torso,px_torso] = regressIter(Force(3:end,i),m); % Fx > 0 if tension. If tension and displacement > 0 (POB move to R), should get positive spring
-                    [cx_lag_torso,rsqx_lag_torso,px_lag_torso] = regressIter(Force(lag+2:end,i),mlag); 
+                    m = [TrialData(n).Results.aTorso(:,i) TrialData(n).Results.vTorso(:,i) TrialData(n).Results.torso(:,i)-ref ones(size(ForceFilt(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
+                    [cx_torso,rsqx_torso,px_torso,cx_torso_st,rsqx_torso_st] = regressIterNew(ForceFilt(:,i),m); % Fx > 0 if tension. If tension and displacement > 0 (POB move to R), should get positive spring
+                                        
+                    % Lag of 157ms (kinem's lag force?)  - check this code
+%                     mlag = [aTorso(start_idx-2+lag:stop_idx-2+lag,i) vTorso(start_idx-1+lag:stop_idx-1+lag,i) torso(start_idx+lag+2:end,i)-ref ones(size(Force(lag:end,i)))]; 
+%                     [cx_lag_torso,rsqx_lag_torso,px_lag_torso] = regressIter(Force(lag+2:end,i),mlag); 
+%                     [cx_lag_torso,rsqx_lag_torso,px_lag_torso,cx_lag_torso_st,rsqx_lag_torso_st] = regressIterNew(Force(:,i),mlag);
                     % Test correlations
                     % no lag
-                    TrialData(n).Results.FresX = Force(3:end,i) - m*cx_torso;  % Calculate corr power to residual. However, oppositte force sign conventions for power vs. force for model, so just know that -rho values mean correlated.
-                    [temp, TrialData(n).Results.corrPFxpval] = corr(TrialData(n).Results.FresX,intPt_power(2:end,i));
-                    if TrialData(n).Results.corrPFxpval < 0.05
-                        TrialData(n).Results.corrPowerFresX = temp;
-                    else
-                        TrialData(n).Results.corrPowerFresX = nan;
-                    end
+%                     TrialData(n).Results.FresX = Force(:,i) - m*cx_torso;  % Calculate corr power to residual. However, oppositte force sign conventions for power vs. force for model, so just know that -rho values mean correlated.
+%                     [temp, TrialData(n).Results.corrPFxpval] = corr(TrialData(n).Results.FresX,IP_power(:,i));
+%                     if TrialData(n).Results.corrPFxpval < 0.05
+%                         TrialData(n).Results.corrPowerFresX = temp;
+%                     else
+%                         TrialData(n).Results.corrPowerFresX = nan;
+%                     end
                     % lag
-                    TrialData(n).Results.FresLagX = Force(lag+2:end,i) - mlag*cx_lag_torso;  % Calculate corr power to residual. However, oppositte force sign conventions for power vs. force for model, so just know that -rho values mean correlated.
-                    [temp, TrialData(n).Results.corrPFxLagpval] = corr(TrialData(n).Results.FresLagX,intPt_power(lag+1:end,i));
-                    if TrialData(n).Results.corrPFxLagpval < 0.05
-                        TrialData(n).Results.corrPowerFresLagX = temp;
-                    else
-                        TrialData(n).Results.corrPowerFresLagX = nan;
-                    end               
-  
-                    clear temp;
+%                     TrialData(n).Results.FresLagX = Force(lag+2:end,i) - mlag*cx_lag_torso;  % Calculate corr power to residual. However, oppositte force sign conventions for power vs. force for model, so just know that -rho values mean correlated.
+%                     [temp, TrialData(n).Results.corrPFxLagpval] = corr(TrialData(n).Results.FresLagX,IP_power(:,i));
+%                     if TrialData(n).Results.corrPFxLagpval < 0.05
+%                         TrialData(n).Results.corrPowerFresLagX = temp;
+%                     else
+%                         TrialData(n).Results.corrPowerFresLagX = nan;
+%                     end           
                     
-                    %% Fit Fint to IP state var's 
-
-                    % Regress per direction. Regress
-                    % iteratively, throwing away any variables with coeff's
-                    % whose CI's include zero. For ML disp, look at IP
-                    % relative to a midline. Assume model acts to
-                    % restore IP to mean IP pos in ML dir. Must reverse
-                    % sign of force if want positive damper and spring coeff
-                    % to mean passive elements. 
-                    % Up to this point, sign convention for all force
-                    % directions is positive when tension/shear for POB
-                    % away from IP. For fit model, -Fx/y/z is consistent with a
-                    % positive spring or damper restoring person to midline
-                    % or starting position
+                    % Z/Vert dir %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     clear m;
-                    i = 1; % Just do for x dir. Should write code to use IP height reference if want to fit model in vertical/z dir. Not make sense to fit model to AP/y dir.
-                    ref = nanmean(rFin(:,1)); 
+                    i = 3; % Use height of IP right after step onto beam as position reference for fit model in vertical/z dir. What we want is height of IP when person is upright and on balance...
+                    eqbmHt = lFin(1,3); 
+%                     eqbmHt = rFin(1,3); 
+                    TrialData(n).Results.eqbmHt = eqbmHt; % Same for every trial
                     % No lag
-                    m = [aFin(:,i) vFin(2:end,i) rFin(3:end,i)-ref ones(size(aFin(:,i)))]; % Want displacement, not abs pos for fitting. 
-
-                    [cx_IP,rsqx_IP,px_IP] = regressIter(Force(3:end,i),m); % Fx > 0 if tension. If tension and displacement > 0 (POB move to R), should get positive spring          
+                    m = [TrialData(n).Results.aTorso(:,i) TrialData(n).Results.vTorso(:,i) TrialData(n).Results.torso(:,i)-eqbmHt ones(size(ForceFilt(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
+                    [cz_torso,rsqz_torso,pz_torso,cz_torso_st,rsqz_torso_st] = regressIterNew(ForceFilt(:,i),m); % Fz > 0 if tension. If tension and displacement > 0 , should get positive spring
   
                     clear temp;
                     
+                    %% Fit Ty Gd to torso ang state var's. Use filtered versions of all var's
+                    
+                    temp.T = filtfilt(sos,g,TrialData(n).Results.TyGd);
+
+                    % Regress
+                    % iteratively, throwing away any variables with coeff's
+                    % whose CI's include zero. For torsional spring, look at torso
+                    % relative to angle of pi/2 (vertical). 
+                                       
+                    clear m;
+                    ref = pi/2; 
+                    % No lag
+                    temp.theta = filtfilt(sos,g,angTorso);
+                    angTorsoFilt = temp.theta(start_idx:stop_idx);
+                    temp.w = filtfilt(sos,g,wTorso);
+                    wTorsoFilt = temp.w(start_idx+1:stop_idx+1);
+                    temp.alpha = filtfilt(sos,g,alphaTorso);
+                    alphaTorsoFilt = temp.alpha(start_idx+2:stop_idx+2);
+                                        
+                    m = [alphaTorsoFilt wTorsoFilt angTorsoFilt-ref ones(size(temp.T))]; 
+                    [c_ang_torso,rsq_ang_torso,p_ang_torso,c_ang_torso_st,rsq_ang_torso_st] = regressIterNew(temp.T,m);                     
+                    
+                    temp = [];
                     %% Get POB RASI marker to calculate AP velocity of whole body 
                     RASIFilty = filtfilt(sos, g, Markers.POB.RASI(start_idx:stop_idx,2))./1000; % (m)
                     % Store pos for later analysis/plotting
@@ -750,18 +739,21 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     
                     %% Get POB's effective arm length only in ML dir
                     TrialData(n).Results.armPOBX = RFIN(:,1) - RSHO(:,1);
+                    
                 end
                 
-%% --------------- STORE THE RESULTS ----------------------------------- %%
-                % For assisted trials, we store the forces, the arm vector,
-                % and the work, power, and alignment
+%% --------------- STORE THE DYNAMICS  RESULTS ----------------------------------- %%
+                % For assisted trials
                         
                 if subj == 3 && (trial == 2 || trial == 4) % special case where force data is not trustworthy, do not store, ok to do calc's for debugging
-                    TrialData(n).Results.Forces = nan;
+                    TrialData(n).Results.Force = nan;
                     
+                    % x/ML dir
                     TrialData(n).Results.cx_torso = nan; % regression coeff's
                     TrialData(n).Results.rsqx_torso = nan; %
                     TrialData(n).Results.px_torso = nan; %
+                    TrialData(n).Results.cx_torso_st = nan; % regression coeff's
+                    TrialData(n).Results.rsqx_torso_st = nan; %
                     TrialData(n).Results.cx_lag_torso = nan; % regression coeff's
                     TrialData(n).Results.rsqx_lag_torso = nan; %
                     TrialData(n).Results.px_lag_torso = nan; %
@@ -777,8 +769,42 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     TrialData(n).Results.corrPFxLagpval = nan;
                     TrialData(n).Results.corrPFxpval = nan;
                     TrialData(n).Results.FresLagX = nan;
-                else
-                    TrialData(n).Results.Forces = Force;
+                    
+                    % z/Vert dir
+                    TrialData(n).Results.cz_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsqz_torso = nan; %
+                    TrialData(n).Results.pz_torso = nan; %
+                    TrialData(n).Results.cz_torso_st = nan; % regression coeff's
+                    TrialData(n).Results.rsqz_torso_st = nan; %
+                    
+                    % Power
+                    TrialData(n).Results.IntPower = nan; % x dir
+                    TrialData(n).Results.IntPowerXZ = nan; % 2D
+                    TrialData(n).Results.POBPower = nan; % x dir
+                    TrialData(n).Results.POBPowerXZ = nan; % 2D
+                    
+                    % Angular - some of these metrics are calculated/stored
+                    % earlier in code. Now overwrite bad trials' results
+                    % with nan's
+                    TrialData(n).Results.TyTorso = nan;
+                    TrialData(n).Results.TyGd = nan;
+                    TrialData(n).Results.TyExt = nan;
+                    TrialData(n).Results.TyGdXhZh = nan;
+                    TrialData(n).Results.TyGdXlZh = nan;
+                    TrialData(n).Results.TyGdXhZl = nan;
+                    TrialData(n).Results.TyGdXlZl = nan;
+                    TrialData(n).Results.c_ang_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsq_ang_torso = nan; % rsquare
+                    TrialData(n).Results.p_ang_torso = nan; % p-value
+                    TrialData(n).Results.angP = nan;
+                    TrialData(n).Results.lagTyAngTorso = nan;
+                    TrialData(n).Results.xcorrTyAngTorso = nan;
+                    TrialData(n).Results.lagTyWTorso = nan;
+                    TrialData(n).Results.xcorrTyWTorso = nan;
+                    TrialData(n).Results.lagTyAlphaTorso = nan;
+                    TrialData(n).Results.xcorrTyAlphaTorso = nan;
+                    
+                else % good force data
                 
                     if ~strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
                         % Arm vec's
@@ -790,262 +816,244 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                         TrialData(n).Results.POBArmVel = vArmPOB;
                         TrialData(n).Results.POBArmAcc = aArmPOB;
                         % Save interaction point state
-                        TrialData(n).Results.IntPt = rFin;
+                        TrialData(n).Results.IntPt = lFin;
+%                         TrialData(n).Results.IntPt = rFin;
                         TrialData(n).Results.IntPtVel = vFin;
                         TrialData(n).Results.IntPtAcc = aFin;
+                        
                         % Save info on fit force to pos, vel, acc of torso marker
+                        % x/ML dir
                         TrialData(n).Results.cx_torso = cx_torso; % regression coeff's
                         TrialData(n).Results.rsqx_torso = rsqx_torso; %
                         TrialData(n).Results.px_torso = px_torso; %
-                        TrialData(n).Results.cx_lag_torso = cx_lag_torso; % regression coeff's
-                        TrialData(n).Results.rsqx_lag_torso = rsqx_lag_torso; %
-                        TrialData(n).Results.px_lag_torso = px_lag_torso; %
+                        TrialData(n).Results.cx_torso_st = cx_torso_st; % regression coeff's
+                        TrialData(n).Results.rsqx_torso_st = rsqx_torso_st; %
+%                         TrialData(n).Results.cx_lag_torso = cx_lag_torso; % regression coeff's
+%                         TrialData(n).Results.rsqx_lag_torso = rsqx_lag_torso; %
+%                         TrialData(n).Results.px_lag_torso = px_lag_torso; %
+                        % Save info on fit force to IP
+%                         TrialData(n).Results.cx_IP = cx_IP; % regression coeff's
+%                         TrialData(n).Results.rsqx_IP = rsqx_IP; %
+%                         TrialData(n).Results.px_IP = px_IP; %
 %                         TrialData(n).Results.cy_torso = cy_torso; % regression coeff's
 %                         TrialData(n).Results.rsqy_torso = rsqy_torso; % rsquare
 %                         TrialData(n).Results.py_torso = py_torso; % p-value
-%                         TrialData(n).Results.cz_torso = cz_torso; % regression coeff's
-%                         TrialData(n).Results.rsqz_torso = rsqz_torso; % rsquare
-%                         TrialData(n).Results.pz_torso = pz_torso; % p-value
-                        % Save info on fit force to IP
-                        TrialData(n).Results.cx_IP = cx_IP; % regression coeff's
-                        TrialData(n).Results.rsqx_IP = rsqx_IP; %
-                        TrialData(n).Results.px_IP = px_IP; %
-                    end
-
-                    TrialData(n).Results.IntPower = intPt_power;
-                    TrialData(n).Results.IPpowerX_lo = IP_powerX_lo;
-                    TrialData(n).Results.IPpowerX_hi = IP_powerX_hi;
-                    TrialData(n).Results.IntCumWork = intPt_cumWork;
-                end
-                
-                
-                clear intPt_power intPt_cumWork 
-            else % one person data set, no force data
-                clear torso torsoFilt vTorso vTorsoFilt aTorso
-                %% Get POB torso state values. Use clav or C7 if needed
-                if (subj == 4 && trial == 7) || (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
-                    if isfield(Markers,'AP') % Assist Solo cond's
-                        torso = Markers.AP.C7(start_idx:stop_idx,:)./1000;
-                    else
-                        torso = Markers.C7(start_idx:stop_idx,:)./1000;
-                    end
-                else
-                    if isfield(Markers,'AP') % Assist Solo cond's
-                        torso = Markers.AP.CLAV(start_idx:stop_idx,:)./1000;
-                    else
-                        torso = Markers.CLAV(start_idx:stop_idx,:)./1000;
+                        % z/Vert dir
+                        TrialData(n).Results.cz_torso = cz_torso; % regression coeff's
+                        TrialData(n).Results.rsqz_torso = rsqz_torso; % rsquare
+                        TrialData(n).Results.pz_torso = pz_torso; % p-value
+                        
+                        % Angular
+                        TrialData(n).Results.c_ang_torso = c_ang_torso; % regression coeff's
+                        TrialData(n).Results.rsq_ang_torso = rsq_ang_torso; % rsquare
+                        TrialData(n).Results.p_ang_torso = p_ang_torso; % p-value
+                        
+                        % Power
+                        TrialData(n).Results.IntPower = IP_power; % x dir
+                        TrialData(n).Results.IntPowerXZ = IP_power_XZ; % 2D
+                        TrialData(n).Results.POBPower = POB_power; % x dir
+                        TrialData(n).Results.POBPowerXZ = POB_power_XZ; % 2D
+    %                     TrialData(n).Results.IPpowerX_lo = IP_powerX_lo;
+    %                     TrialData(n).Results.IPpowerX_hi = IP_powerX_hi;
+                                        % Angular power
+                                        
+                        TrialData(n).Results.IntCumWork = IP_cumWork;
                     end
                 end
                 
-                for k = 1:3
-                    torsoFilt(:,k) = filtfilt(sos, g, torso(:,k)); % (m) % Use only for taking deriv.
-                end
-
-                % Store torso pos for later analysis/plotting
-                TrialData(n).Results.torso = torso; % (m)
-                vTorso = diff(torsoFilt).*sample_rate; 
-                % Filter vel before take derivative
-                for k = 1:3
-                    vTorsoFilt(:,k) = filtfilt(sos, g, vTorso(:,k));
-                end
-                aTorso = diff(vTorsoFilt).*sample_rate;
-                % Store torso derivatives for later analysis/plotting
-                TrialData(n).Results.vTorso = vTorso;
-                TrialData(n).Results.aTorso = aTorso;
+                
+                clear IP_power IP_cumWork 
             end
-            %% Calculate kinematic metrics like distance completed and sway
-            % Use the medfiltered data from Markers struct
-            if any(strcmpi(TrialData(n).Info.Condition, {'Assist Beam','Assist beam','Solo Beam', 'Assist Ground', 'Solo Ground'}))
-                sway = torso(:,1);
-                if any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam', 'Solo Ground'}))                   
-                    temp.LPSI = Markers.LPSI(start_idx:stop_idx,1)./1000;
-                    temp.RPSI = Markers.RPSI(start_idx:stop_idx,1)./1000;
-                    COMLatPos = mean([temp.LPSI'; temp.RPSI'],1);
-                    % Also collect thorax (approx with
-                    % projection of line between two thorax markers) ang
-                    % rotation for POB. Calculate leg segment obliq by
-                    % 1) project all malleolus markers and PSIS markers
-                    % into frontal plane, 2) take midpoint 2 malleoli, 3)
-                    % take midpoint PSIS markers, 4) take vector between
-                    % the two points and get angle in frontal plane
-                    TrialData(n).Results.pelvicObliq = TrialData(n).Markers.LPelvisAngles(start_idx:stop_idx,1)./1000; % L and R pelvis angles are exact mirror images of each other. Pelvic data not really necessary, just look at thorax and leg segments for now     
-                    % Leg segment angle (only care x and z components since
-                    % will look at frontal plane angle
-                    temp.mANK(:,1) = mean([Markers.LANK(start_idx:stop_idx,1) Markers.RANK(start_idx:stop_idx,1)],2)./1000;
-                    temp.mANK(:,3) = mean([Markers.LANK(start_idx:stop_idx,3) Markers.RANK(start_idx:stop_idx,3)],2)./1000;
-                    temp.mPSIS(:,1) = mean([Markers.LPSI(start_idx:stop_idx,1) Markers.RPSI(start_idx:stop_idx,1)],2)./1000;
-                    temp.mPSIS(:,3) = mean([Markers.LPSI(start_idx:stop_idx,3) Markers.RPSI(start_idx:stop_idx,3)],2)./1000;
-                    temp.legVec = temp.mPSIS-temp.mANK;
-                    temp = [];
-                else % Force data exists, two people marker set
-                    temp.LPSI = Markers.POB.LPSI(start_idx:stop_idx,1)./1000;
-                    temp.RPSI = Markers.POB.RPSI(start_idx:stop_idx,1)./1000;
-                    COMLatPos = mean([temp.LPSI; temp.RPSI]);
-                    % Linear correlation between lateral COM sway and lateral
-                    % forces and correlation bewteen lateral torso sway and
-                    % vertical forces. Need to remove nan's before do corr.
-                    ind = ~isnan(COMLatPos);
-                    [rho, TrialData(n).Results.pFlatCOM] = corr(Force(ind,1),COMLatPos(ind));
-                    if TrialData(n).Results.pFlatCOM < 0.05
-                        TrialData(n).Results.rFlatCOM = rho;
-                    else
-                        TrialData(n).Results.rFlatCOM = nan;
+            
+            %% Check plots
+            % Plot to check that start and end times are correct, also check height of midline/reference
+            if plotCheck == 1 
+                t = 0:(length(torso(:,2))-1); 
+                t = t./sample_rate;
+                if any(strcmpi(TrialData(n).Info.Condition,{'Solo Ground','Assist Ground'}))
+                    plotind = plotind + 1;
+                    if plotind == 1
+                        f1 = figure;
                     end
-                    ind = ~isnan(sway);
-                    [rho, TrialData(n).Results.pFsway] = corr(Force(ind,1),sway(ind));
-                    if TrialData(n).Results.pFsway < 0.05
-                        TrialData(n).Results.rFsway = rho;
-                    else
-                        TrialData(n).Results.rFsway = nan;
+                    set(0, 'currentfigure', f1); 
+                    subplot(numrows,numcols,plotind)
+                    yyaxis left
+                    plot(t,torso(:,1)-TrialData(n).Results.midline,'g'), hold on;
+                    ylim([-0.2 0.2]);hline(0,'k--');
+%                         plot(2:length(t),vTorso(:,2),'g'), hold on;
+                    if ismember(plotind,[1 6 11 16])
+%                         ylabel('AP disp (m)');
+                        ylabel('Torso ML pos (m)')
                     end
+                    yyaxis right
+                elseif any(strcmpi(TrialData(n).Info.Condition,{'Solo Beam','Assist Beam','Assist beam'}))
+                    plot2ind = plot2ind + 1;
+                    if plot2ind == 1
+                        f2 = figure;
+                    end
+                    set(0, 'currentfigure', f2);
+                    subplot(numrows,numcols,plot2ind)
+                end
 
-                    % Also collect thorax (approx with
-                    % projection of line between two thorax markers) ang
-                    % rotation for POB
-                    if isfield(Markers.POB,'LPelvisAngles')
-                        TrialData(n).Results.pelvicObliq = TrialData(n).Markers.POB.LPelvisAngles(start_idx:stop_idx,1); % L and R pelvis angles are exact mirror images of each other  
-                    else
-                        TrialData(n).Results.pelvicObliq = nan;
-                    end
-                    % Leg segment angle (only care x and z components since
-                    % will look at frontal plane angle
-                    temp.mANK(:,1) = mean([Markers.POB.LANK(start_idx:stop_idx,1) Markers.POB.RANK(start_idx:stop_idx,1)],2)./1000;
-                    temp.mANK(:,3) = mean([Markers.POB.LANK(start_idx:stop_idx,3) Markers.POB.RANK(start_idx:stop_idx,3)],2)./1000;
-                    temp.mPSIS(:,1) = mean([Markers.POB.LPSI(start_idx:stop_idx,1) Markers.POB.RPSI(start_idx:stop_idx,1)],2)./1000;
-                    temp.mPSIS(:,3) = mean([Markers.POB.LPSI(start_idx:stop_idx,3) Markers.POB.RPSI(start_idx:stop_idx,3)],2)./1000;
-                    temp.legVec = temp.mPSIS-temp.mANK;
-                    temp = [];
+                plot(t,LHEE(:,3)/1000,'b-',t,RHEE(:,3)/1000,'r-'),hold on;
+                ylim([0 0.4]);
+%                     plot(1:length(t),LHEE(:,3)/1000,'b-',1:length(t),RHEE(:,3)/1000,'r-'),hold on;
+                vline([t(start_idx) t(stop_idx)],'k-');  
+%                     vline([start_idx  stop_idx],'k-');  
+                hline(TrialData(n).Results.ht,'k-');
+                if ismember(plotind,numcols*(1:4))
+                    ylabel('Vert pos (m)');
                 end
-                temp = [];
-                
-                if ~isempty(strfind(TrialData(n).Info.Condition,'beam'))
-                    midline = beamMidline;
+                if plotind == 1 && gcf == f1
+                    legend('Torso','Lheel','Rheel','orientation','horizontal')
+                elseif plot2ind == 1 && gcf == f2
+                    legend('Lheel','Rheel','orientation','horizontal')
+                end
+                xlabel('Time (s)');
+                if (plotind == 1 && gcf == f1) || (plot2ind == 1 && gcf == f2)
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
                 else
-                    midline = nanmean(sway);
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
                 end
-                sway = sway - midline; % same as torso pos with midline removed
-                TrialData(n).Results.beamerSway = sway;
-                TrialData(n).Results.beamerCOMSway = COMLatPos;
-                
-                % Distance is calculated as the difference between the
-                % forward positions of the Rheel at the beginning of the
-                % analysis window and the heel of the forward foot at the
-                % end of the analysis window. Do only for beam trials!
-                if any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam', 'Assist Beam','Assist beam'}))
-                    dist = torso(end,2) - torso(1,2); % torso is already cut to use start and stop indices
-                    if dist >= 3.65 % length of beam
-                        distA(n) = 3.65;
-                    else
-                        distA(n) = dist; 
+                title(titlename);   
+            elseif plotCheck == 2 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam','Assist Beam','Assist beam'})) % plot distance calculated from heel vert algo vs. manually entered distance traveled. 
+                % Must plot beam distance here in order to compare Luke's method vs.
+                % algo method. Plot solo in diff color from assist so see if learning
+                % trend across all trials or just solo trials
+                plotind = plotind + 1; % not for subplots, just for labels
+                hold on;
+                tn = str2num(TrialData(n).Info.Trial(end-1:end));
+                if strcmpi(TrialData(n).Info.Condition,'Solo Beam')
+                    plot(tn,distA(n),'bx'),...
+                    plot(tn,distL(n)/1000,'bo')
+                elseif strcmpi(TrialData(n).Info.Condition,'Assist Beam','Assist beam')
+                    plot(tn,distA(n),'kx'),...
+                    plot(tn,distL(n)/1000,'ko')
+                end
+                if plotind == 1
+                    legend('algo','entered'); ylabel('Distance completed (m)'),xlabel('Trial');
+                    set(gcf,'outerposition',[672   662   576   389]);
+                    titlename = sprintf('HHI%i',subj); title(titlename);
+                end
+            elseif plotCheck == 3 
+                t = 0:(length(torso(:,2))-1); 
+                t = t./sample_rate;
+                if any(strcmpi(TrialData(n).Info.Condition,{'Solo Ground','Assist Ground'}))
+                    plotind = plotind + 1;
+                    if plotind == 1
+                        f1 = figure;
                     end
-                    TrialData(n).Results.totalDistance = distA(n); 
-                    %% Luke's method on finding beam distance
-                    if any(strcmpi(TrialData(n).Info.Condition,'Solo Beam'))
-                        torsoY = TrialData(n).Markers.CLAV(:,2);
-                    else
-                        torsoY = TrialData(n).Markers.POB.CLAV(:,2);
+                    set(0, 'currentfigure', f1); 
+                    subplot(numrows,numcols,plotind)
+                    plot(t,COM(:,1)-TrialData(n).Results.midline,'b-'),hold on; % Plot COM for overgd to see if different from torso and which better to use for midline
+                elseif any(strcmpi(TrialData(n).Info.Condition,{'Solo Beam','Assist Beam','Assist beam'}))
+                    plot2ind = plot2ind + 1;
+                    if plot2ind == 1
+                        f2 = figure;
                     end
-                    tempD = torsoY(stop_L) - torsoY(start_L);
-                    if (TrialData(n).Info.Distance_Traveled == 144)
-                        distL(n) = 144*25.4;
-                    else
-                        distL(n) = tempD;
+                    set(0, 'currentfigure', f2);
+                    subplot(numrows,numcols,plot2ind)
+                end
+                plot(t,torso(:,1)-TrialData(n).Results.midline,'k-')
+                % Must plot lines after full plot so scaled correctly
+                ylim([-0.5 0.5]);
+                hline(0,'k--');
+                vline([t(start_idx) t(stop_idx)],'k-');  
+
+                if ismember(plotind,numcols*(1:4))
+                    ylabel('ML pos (m)');
+                end
+                xlabel('Time (s)');
+                if (plotind == 1 && gcf == f1) || (plot2ind == 1 && gcf == f2)
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                    if (plotind == 1 && gcf == f1)
+                        legend('COM','Torso');
                     end
                 else
-                    TrialData(n).Results.totalDistance = nan;
-                    distA(n) = nan; distL(n) = nan;
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
                 end
-                %% Plot to check that start and end times are correct
-                % Plot whole trial but xlim to start and stop times with a
-                % little before and after. Plot hline for beamht
-                if plotCheck == 1 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Ground','Assist Ground'}))%  {'Solo Beam','Assist Beam','Assist beam'} plot to check distance completed on beam looks reasonable. Plot AP and ML pos of torso relative to beam center
-                    plotind = plotind + 1;
-                    subplot(numrows,numcols,plotind)
-                    t = 0:(length(torso(:,2))-1); % time starts and ends with start_idx and stop_idx
-                    t = t./sample_rate;
+                title(titlename);  
+            elseif plotCheck == 4 && any(strcmpi(TrialData(n).Info.Condition,{'Assist Beam','Assist beam','Assist Ground'})) % Plot force and torque on L axis and ma ground (beam or floor) on R only for assisted trials
+                t = 0:(length(Force(:,2))-1); 
+                t = t./sample_rate;
+                clear Fxy
+                for i = 1:length(Force)
+                    Fxy(i) = norm(Force(i,[1 3]));
+                end
+
+                plotind = plotind + 1;
+                subplot(numrows,numcols,plotind)
+                yyaxis left
+                plot(t,Fxy,t,Fxy'.*TrialData(n).Results.maGd,t,TrialData(n).Results.TyGd), hold on;
+                if subj == 5 && trial == 2
+                    ylim([-300 300]);
+                else
+                    ylim([-20 20]);
+                end
+                if ismember(plotind,[1 6 11 16 21])
+                    ylabel('|F| or Torque (N or Nm)')
+                end
+                hline(0,'k-');
+
+                yyaxis right
+                plot(t,TrialData(n).Results.maGd)
+                ylim([-1 1]);
+                if ismember(plotind,[1 6 11 16 21]+4)
+                    ylabel('Moment arm gd (m)')
+                end
+
+%                     vline([t(start_idx) t(stop_idx)],'k-');  
+%                     vline([start_idx  stop_idx],'k-');  
+
+                if plotind == 1 
+                    legend('|Fxy|','|Fxy|*m.a.','Ty','m.a.','orientation','horizontal')
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+
+                xlabel('Time (s)');
+            elseif plotCheck == 5 && any(strcmpi(TrialData(n).Info.Condition,{'Solo Beam','Solo beam','Assist Beam','Assist beam'})) % Plot w (torso angular speed) to check angular momentum
+                t = 0:(length(TrialData(n).Results.wTorso)-1); 
+                t = t./sample_rate;
+
+                plotind = plotind + 1;
+                subplot(numrows,numcols,plotind)
+                if any(strcmpi(TrialData(n).Info.Condition,{'Assist Beam','Assist beam'}))
                     yyaxis left
-%                     plot(t,(left_heel(:,2)-left_heel(start_idx,2))/1000,t,(right_heel(:,2)-left_heel(start_idx,2))/1000),hold on; % subtract init value so easy to compare to plots of dispA and dispL
-                    plot(t,(torso(:,2)-torso(start_idx,2))/1000),hold on; % subtract init value so easy to compare to plots of dispA and dispL
-                    if any(plotind,[1 6 11 16])
-                        ylabel('AP disp (m)');
-                    end
-%                     xlim([t(start_idx)-1 t(stop_idx)+1]);
-%                     vline([t(start_idx) t(stop_idx)],'k-');
+                end
+                plot(t,TrialData(n).Results.wTorso),hold on;    
+                ylim([-3 3]*.1);
+                if ismember(plotind,[1 6 11 16 21])
+                    ylabel('Torso ang vel (rad/s)')
+                end
+
+                if any(strcmpi(TrialData(n).Info.Condition,{'Assist Beam','Assist beam'}))
                     yyaxis right
-                    plot(t,LHEEZ(start_idx:stop_idx)/1000,t,RHEEZ(start_idx:stop_idx)/1000);
-%                     hline(beamHt/1000,'k-'); % convert to m to plot. Only
-%                     plot for beam-walking trials
-                    if any(plotind,numcols*(1:4))
-                        ylabel('Vert pos (m)');
-                    end
-                    if plotind == 1
-                        legend('Torso','Lheel','Rheel','orientation','horizontal')
-                    end
-                    xlabel('Time (s)');
-                    if plotind == 1
-                        titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                    plot(t,TrialData(n).Results.TyGd)
+                    ylabel('Torque (Nm)'),
+                    if subj == 5 && trial == 2
+                        ylim([-200 200]);
                     else
-                        titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
-                    end
-                    title(titlename);   
-                elseif plotCheck == 2 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam','Assist Beam','Assist beam'})) % plot distance calculated from heel vert algo vs. manually entered distance traveled. 
-                    % Must plot beam distance here in order to compare Luke's method vs.
-                    % algo method. Plot solo in diff color from assist so see if learning
-                    % trend across all trials or just solo trials
-                    plotind = plotind + 1; % not for subplots, just for labels
-                    hold on;
-                    tn = str2num(TrialData(n).Info.Trial(end-1:end));
-                    if strcmpi(TrialData(n).Info.Condition,'Solo Beam')
-                        plot(tn,distA(n),'bx'),...
-                        plot(tn,distL(n)/1000,'bo')
-                    elseif strcmpi(TrialData(n).Info.Condition,'Assist Beam','Assist beam')
-                        plot(tn,distA(n),'kx'),...
-                        plot(tn,distL(n)/1000,'ko')
-                    end
-                    if plotind == 1
-                        legend('algo','entered'); ylabel('Distance completed (m)'),xlabel('Trial');
-                        set(gcf,'outerposition',[672   662   576   389]);
-                        titlename = sprintf('HHI%i',subj); title(titlename);
-                    end
-                elseif plotCheck == 3 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Beam','Assist Beam','Assist beam'}))  % Check that beam midline and SD look reasonable for each trial's sway
-                    plotind = plotind + 1;
-                    subplot(numrows,numcols,plotind)
-                    t = 0:(length(torso(:,2))-1); % time starts and ends with start_idx and stop_idx
-                    t = t./sample_rate;
-                    plot(t,torso(:,1)),hold on;
-                    hline(beamMidline,'k');
-                    hline(beamMidline + [-beamMidlineSD beamMidlineSD],'k--');
-                    xlabel('Time (s)'),ylabel('Torso pos (m)');
-                    if plotind == 1
-                        titlename = sprintf('HHI%i %s',subj,TrialData(n).Info.Trial); title(titlename);
-                    else
-                        titlename = sprintf('HHI%s',TrialData(n).Info.Trial); title(titlename);
-                    end
-                elseif plotCheck == 4 && any(strcmpi(TrialData(n).Info.Condition, {'Solo Ground','Assist Ground'})) % Check time window of analysis by plot sway and vertical displacement (visually vert disp is a strong tell of when they stopped walking)
-                    plotind = plotind + 1;
-                    subplot(numrows,numcols,plotind)
-                    t = 0:(length(torso(:,2))-1); % time starts and ends with start_idx and stop_idx
-                    t = t./sample_rate;
-                    yyaxis left
-                    plot(t,torso(:,1)),hold on;
-                    xlabel('Time (s)'),ylabel('Torso ML pos (m)');
-                    yyaxis right
-                    plot(t(2:end),vTorsoFilt(:,2)),ylabel('Torso AP vel (m)'),ylim([0 0.005]);
-                    if plotind == 1
-                        titlename = sprintf('HHI%i %s',subj,TrialData(n).Info.Trial); title(titlename);
-                    else
-                        titlename = sprintf('HHI%s',TrialData(n).Info.Trial); title(titlename);
+                        ylim([-20 20]);
                     end
                 end
-                
-                %% We also store the average speed of the trial, and a
-                % logical value indicating if the trial was completed.
-                TrialData(n).Results.avgSpeed = TrialData(n).Results.totalDistance./time(end); % time has been trimmed to cover start to stop only
-                TrialData(n).Results.completed = (TrialData(n).Info.Distance_Traveled == 144);
-            elseif strcmpi(TrialData(n).Info.Condition, 'Assist Solo')
-                TrialData(n).Results.totalDistance = nan;
-                distA(n) = nan; distL(n) = nan;
+
+%                     vline([t(start_idx) t(stop_idx)],'k-');  
+%                     vline([start_idx  stop_idx],'k-');  
+                hline(0,'k-');
+
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+
+                xlabel('Time (s)');
             end
+                
             % RESULTS FOR ALL TRIALS
             TrialData(n).Results.time = time; % only the analysis window
             TrialData(n).Results.startIdx = start_idx;
