@@ -18,6 +18,7 @@ end
 
 x_filt = x;
 ind1 = 1;
+indStop = [];
 for i = 1:length(ind2) % for number of nan gaps
 %     ind1 = ind1
 %     temp = ind2(i)

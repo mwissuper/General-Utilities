@@ -45,7 +45,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
     mFT = 4/9.81; % (kg)
     
     % For check plots of Assist Beam and Solo Beam only
-    if subj == 12 && plotCheck == 4
+    if subj == 12 && (plotCheck == 4 || plotCheck == 6)
         numrows = 5;
     else
         numrows = 4; 
@@ -112,6 +112,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
         
     clear Markers
     temp = [];
+    firstPlot = 0; % initialize figures if first time in plotCheck
 
     %% Trial Analysis Main Loop
     for n = 1:num_trials
@@ -182,7 +183,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
             % Torso pos used for finding start/stop of trial
             clear torso torsoFilt vTorso vTorsoFilt aTorso aTorsoFilt
             % Get torso values. Use clav but C7 if needed. Abs coordinate system, not subtract out midline.
-            if (subj == 4 && trial == 7) || (subj == 5 && (trial == 21 || trial == 31 || trial == 42)-1) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
+            if (subj == 4 && trial == 7) || (subj == 5 && (trial == 21 || trial == 31 || trial == 42)) || (subj == 7 && (trial == 13 || trial == 44)) || (subj == 14 && trial == 8) 
                 torso = TimeMarkers.C7./1000;
             else
                 torso = TimeMarkers.CLAV./1000;
@@ -310,8 +311,8 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 
                 %% Angular state and momentum of POB
                 clear angTorso wTorso alphaTorso I Ly
-                angTorso = atan2(torso(:,3),torso(:,1)-TrialData(n).Results.midline); % positive CCW
-                wTorso = diff(filtfilt(sos,g,angTorso)).*sample_rate; % positive CCW to be opp of torque, then alpha is in phase torque (T = I*alpha)
+                angTorso = atan2(torso(:,1)-TrialData(n).Results.midline,torso(:,3)); % positive CW, relative to vertical
+                wTorso = diff(filtfilt(sos,g,angTorso)).*sample_rate; 
                 alphaTorso = diff(filtfilt(sos,g,wTorso)).*sample_rate;
                 TrialData(n).Results.angTorso = angTorso(start_idx:stop_idx);
                 TrialData(n).Results.wTorso = wTorso(start_idx+1:stop_idx+1);
@@ -352,8 +353,8 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 clear Force Torque F T
                 % Collect the force and torque voltages into the initialized arrays
                 for k = 1:3 % for each direction                  
-                    %Downsample the forces and torques to be at the same
-                    %sampling rate as the marker data
+                    % Downsample the forces and torques to be at the same
+                    % sampling rate as the marker data
                     F = resample(TrialData(n).Forces.(force_names{k}), sample_rate, force_rate);
                     T = resample(TrialData(n).Forces.(torque_names{k}), sample_rate, force_rate);
                     % Median filter forces to reduce noise - why do this
@@ -387,16 +388,21 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 % change it to the POB's coordinate frame so it's force
                 % felt by person. This will then be consistent for the
                 % model that fits torque felt by person (on the person) to
-                % torso state for positive passive elements. Do this after 
+                % torso state. Do this after 
                 % recoverForces projects force signals into lab CS since
                 % that code subtracts off a signed baseline voltage
-                % For sensor, tension < 0 for Fx and Fy and tension > 0 for
-                % Fz. For POB, we want tension < 0 for Fx and tension > 0
-                % for Fy and Fz.
-                Force(:,2) = -Force(:,2);
+                % For sensor, tension > 0 for all voltages. 
+                Force = -Force;
                 % Store the data
                 TrialData(n).Results.Force = Force;
                 
+                % Calculate 2D vector norm of force
+                clear Fmag theta
+                for i = 1:length(Force(:,1))
+                    Fmag(i) = norm(Force(i,[1 3]));
+                    theta(i) = -(atan2(Force(i,3),Force(i,1))-pi/2); % CW > 0, relative to vertical
+                end
+                               
                 % Need to subtract out force of gravity on FH for vertical
                 % dir and subtract out force of accelerating mass of FH in
                 % each direction (?)              
@@ -511,47 +517,32 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     TrialData(n).Results.TyTorso = temp(:,2); % Torque about y axis
     %                 TrialData(n).Results.torqueCOM = cross(rCOM,Force);               
                     temp = cross(rGd,Force);               
-                    TrialData(n).Results.TyGd = temp(:,2); % Total torque on POB
-                    clear r TyFx TyFz
-                    r = TrialData(n).Results.IP - [TrialData(n).Results.midline 0 0];
-                    TrialData(n).Results.TyFx = r(:,3).*TrialData(n).Results.Force(:,1);
-                    TrialData(n).Results.TyFz = -r(:,1).*TrialData(n).Results.Force(:,3);
-                
+                    TrialData(n).Results.TyGd = temp(:,2); % Net torque on POB
+                    clear r TyFx TyFz temp
+                    TrialData(n).Results.TyFx = rGd(:,3).*TrialData(n).Results.Force(:,1);
+                    TrialData(n).Results.TyFz = -rGd(:,1).*TrialData(n).Results.Force(:,3); % Must change sign here to make torque sign correct
+                    
+                    TrialData(n).Results.TyInt = calcTint(TrialData(n).Results.TyFx,TrialData(n).Results.TyFz);
                     % Compute torque due to gravity acting at 1/2 of height
                     % of POB
                     rCOMht = height/2;
-                    TrialData(n).Results.Tg = rCOMht*cos(TrialData(n).Results.angTorso)*9.81*mass;
+                    TrialData(n).Results.Tg = rCOMht*sin(TrialData(n).Results.angTorso)*9.81*mass;
                     
                     TrialData(n).Results.TyExt = TrialData(n).Results.TyGd - TrialData(n).Results.Tg; % Is external torque (applied by partner) the difference between net torque and gravitational torque?
 %                     % Check sign convention
 %                     ind = find(temp(:,2) > 0,1,'first');
 %                     quiver(0,0,rGd(ind,1),rGd(ind,3)),hold on,quiver(rGd(ind,1),rGd(ind,3),Force(ind,1),Force(ind,3));
                     
-                    % Worst case drift scenarios
-                    clear temp
-                    temp.force = Force;
-                    % 1: Fx drift upper limit, Fz drift upper limit
-                    temp.force(:,1) = Force(:,1)+1.5;
-                    temp.force(:,3) = Force(:,3)+5.7;
-                    temp.torque = cross(rTorso,temp.force);
-                    TrialData(n).Results.TyGdXhZh = temp.torque(:,2);
-                    % 2: Fx drift lower limit, Fz drift upper limit
-                    temp.force(:,1) = Force(:,1)-1.5;
-                    temp.force(:,3) = Force(:,3)+5.7;
-                    temp.torque = cross(rTorso,temp.force);
-                    TrialData(n).Results.TyGdXlZh = temp.torque(:,2);
-                    % 3: Fx drift upper limit, Fz drift lower limit
-                    temp.force(:,1) = Force(:,1)+1.5;
-                    temp.force(:,3) = Force(:,3)-5.7;
-                    temp.torque = cross(rTorso,temp.force);
-                    TrialData(n).Results.TyGdXhZl = temp.torque(:,2);
-                    % 4: Fx drift lower limit, Fz drift lower limit
-                    temp.force(:,1) = Force(:,1)-1.5;
-                    temp.force(:,3) = Force(:,3)-5.7;
-                    temp.torque = cross(rTorso,temp.force);
-                    TrialData(n).Results.TyGdXlZl = temp.torque(:,2);  
-                    temp = []
-
+                    % Effects of worst case drift on TyFx, TyFz, and TyInt 
+                    
+                    TrialData(n).Results.TyFxh = rGd(:,3).*(TrialData(n).Results.Force(:,1)+1.5);
+                    TrialData(n).Results.TyFxl = rGd(:,3).*(TrialData(n).Results.Force(:,1)-1.5);
+                    TrialData(n).Results.TyFzh = -rGd(:,1).*(TrialData(n).Results.Force(:,3)+5.7);
+                    TrialData(n).Results.TyFzl = -rGd(:,1).*(TrialData(n).Results.Force(:,3)-5.7);
+                    TrialData(n).Results.TyIntXhZh = calcTint(TrialData(n).Results.TyFxh,TrialData(n).Results.TyFzh);
+                    TrialData(n).Results.TyIntXlZh = calcTint(TrialData(n).Results.TyFxl,TrialData(n).Results.TyFzh);
+                    TrialData(n).Results.TyIntXhZl = calcTint(TrialData(n).Results.TyFxh,TrialData(n).Results.TyFzl);
+                    TrialData(n).Results.TyIntXlZl = calcTint(TrialData(n).Results.TyFxl,TrialData(n).Results.TyFzl);
                     % Power
                     TrialData(n).Results.angP = (TrialData(n).Results.TyGd).*TrialData(n).Results.wTorso;
                     TrialData(n).Results.angPFx = (TrialData(n).Results.TyFx).*TrialData(n).Results.wTorso;
@@ -632,7 +623,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     % to mean passive elements. 
                     % Up to this point, sign convention for all force
                     % directions is positive when tension or shear for POB
-                    % away from IP. For fit model, -Fx/y/z is consistent with a
+                    % away from IP. For fit model, regress to -m is consistent with a
                     % positive spring or damper restoring person to midline
                     % or starting position
                     
@@ -643,7 +634,7 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     ref = TrialData(n).Results.midline; 
                     % No lag
                     m = [TrialData(n).Results.aTorso(:,i) TrialData(n).Results.vTorso(:,i) TrialData(n).Results.torso(:,i)-ref ones(size(ForceFilt(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
-                    [cx_torso,rsqx_torso,px_torso,cx_torso_st,rsqx_torso_st] = regressIterNew(ForceFilt(:,i),m); % Fx > 0 if tension. If tension and displacement > 0 (POB move to R), should get positive spring
+                    [cx_torso,rsqx_torso,px_torso,cx_torso_st,rsqx_torso_st] = regressIterNew(ForceFilt(:,i),-m); % Fx > 0 if tension. If tension and displacement > 0 (POB move to R), should get positive spring
                                         
                     % Lag of 157ms (kinem's lag force?)  - check this code
 %                     mlag = [aTorso(start_idx-2+lag:stop_idx-2+lag,i) vTorso(start_idx-1+lag:stop_idx-1+lag,i) torso(start_idx+lag+2:end,i)-ref ones(size(Force(lag:end,i)))]; 
@@ -669,27 +660,66 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     
                     % Z/Vert dir %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     clear m;
-                    i = 3; % Use height of IP right after step onto beam as position reference for fit model in vertical/z dir. What we want is height of IP when person is upright and on balance...
-                    eqbmHt = lFin(1,3); 
+                    i = 3; 
+                    eqbmHt = TrialData(n).Results.torso(1,i); % Use height of torso right after step onto beam as position reference for fit model in vertical/z dir. What we want is height of torso when person is upright and on balance...
 %                     eqbmHt = rFin(1,3); 
                     TrialData(n).Results.eqbmHt = eqbmHt; % Same for every trial
                     % No lag
                     m = [TrialData(n).Results.aTorso(:,i) TrialData(n).Results.vTorso(:,i) TrialData(n).Results.torso(:,i)-eqbmHt ones(size(ForceFilt(:,i)))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
-                    [cz_torso,rsqz_torso,pz_torso,cz_torso_st,rsqz_torso_st] = regressIterNew(ForceFilt(:,i),m); % Fz > 0 if tension. If tension and displacement > 0 , should get positive spring
-  
-                    clear temp;
+                    [cz_torso,rsqz_torso,pz_torso,cz_torso_st,rsqz_torso_st] = regressIterNew(ForceFilt(:,i),-m); % Fz > 0 if tension. If tension and displacement > 0 , should get positive spring
+                     
+                    % 2D xz vector dir %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    clear m;
+                    i = [1 3]; 
+                    eqbm = [ref eqbmHt]; % Use ref's from X and Z regressions above
+                    % No lag
+                    % Use dot product to find scalar projection of torso state
+                    % vectors onto force vector
+                    for k = 1:length(ForceFilt(:,1))
+                        temp.F = ForceFilt(k,i);
+                        temp.Fn(k) = norm(temp.F);
+                        temp.a(k) = dot(TrialData(n).Results.aTorso(k,i),temp.F)/temp.Fn(k);
+                        temp.v(k) = dot(TrialData(n).Results.vTorso(k,i),temp.F)/temp.Fn(k);
+                        temp.d(k) = dot((TrialData(n).Results.torso(k,i)-eqbm),temp.F)/temp.Fn(k);
+                    end
+                    m = [temp.a' temp.v' temp.d' ones(size(temp.a'))]; % Want displacement, not abs pos for fitting. For now, look at changes in pos of interaction point
+                    [cxz_torso,rsqxz_torso,pxz_torso,cxz_torso_st,rsqxz_torso_st] = regressIterNew(temp.Fn',-m); % Fz > 0 if tension. If tension and displacement > 0 , should get positive spring
+                    
+%                     % Plot check projection of each vector is correct at a
+%                     % given instance in time
+%                     k = 100;
+%                     quiver(0,0,ForceFilt(k,1),ForceFilt(k,3)),hold on;
+%                     quiver(0,0,TrialData(n).Results.aTorso(k,1),TrialData(n).Results.aTorso(k,3));
+%                     quiver(0,0,temp.a(k)*ForceFilt(k,1)/temp.Fn(k),temp.a(k)*ForceFilt(k,3)/temp.Fn(k));
+%                     legend('F','a','a proj');
+%                     
+%                     quiver(0,0,ForceFilt(k,1),ForceFilt(k,3)),hold on;
+%                     quiver(0,0,TrialData(n).Results.vTorso(k,1),TrialData(n).Results.vTorso(k,3));
+%                     quiver(0,0,temp.v(k)*ForceFilt(k,1)/temp.Fn(k),temp.v(k)*ForceFilt(k,3)/temp.Fn(k));
+%                     legend('F','v','v proj');
+%                     
+%                     quiver(0,0,ForceFilt(k,1),ForceFilt(k,3)),hold on;
+%                     quiver(0,0,TrialData(n).Results.torso(k,1)-eqbm(1),TrialData(n).Results.torso(k,3)-eqbm(2));
+%                     quiver(0,0,temp.d(k)*ForceFilt(k,1)/temp.Fn(k),temp.d(k)*ForceFilt(k,3)/temp.Fn(k));
+%                     legend('F','disp','disp proj');
+                    
+                    temp = [];
                     
                     %% Fit Ty Gd to torso ang state var's. Use filtered versions of all var's
                     
-                    temp.T = filtfilt(sos,g,TrialData(n).Results.TyGd);
+                    temp.Tnet = filtfilt(sos,g,TrialData(n).Results.TyGd);
+                    temp.TFx = filtfilt(sos,g,TrialData(n).Results.TyFx);
+                    temp.TFz = filtfilt(sos,g,TrialData(n).Results.TyFz);
+                    temp.Tint = filtfilt(sos,g,TrialData(n).Results.TyInt);
 
-                    % Regress
-                    % iteratively, throwing away any variables with coeff's
+                    % Regress iteratively, throwing away any variables with coeff's
                     % whose CI's include zero. For torsional spring, look at torso
-                    % relative to angle of pi/2 (vertical). 
+                    % relative to angle of pi/2 (vertical). Want sign
+                    % convention of positive coefficient means impeding or
+                    % passive element so need to regress to -m
                                        
                     clear m;
-                    ref = pi/2; 
+                    ref = 0; 
                     % No lag
                     temp.theta = filtfilt(sos,g,angTorso);
                     angTorsoFilt = temp.theta(start_idx:stop_idx);
@@ -698,10 +728,15 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     temp.alpha = filtfilt(sos,g,alphaTorso);
                     alphaTorsoFilt = temp.alpha(start_idx+2:stop_idx+2);
                                         
-                    m = [alphaTorsoFilt wTorsoFilt angTorsoFilt-ref ones(size(temp.T))]; 
-                    [c_ang_torso,rsq_ang_torso,p_ang_torso,c_ang_torso_st,rsq_ang_torso_st] = regressIterNew(temp.T,m);                     
+                    m = [alphaTorsoFilt wTorsoFilt angTorsoFilt-ref ones(size(temp.Tnet))]; 
+                    [c_ang_torso,rsq_ang_torso,p_ang_torso,c_ang_torso_st,rsq_ang_torso_st] = regressIterNew(temp.Tnet,-m);                     
+                    [c_angFx_torso,rsq_angFx_torso,p_angFx_torso,c_angFx_torso_st,rsq_angFx_torso_st] = regressIterNew(temp.TFx,-m);                     
+                    [c_angFz_torso,rsq_angFz_torso,p_angFz_torso,c_angFz_torso_st,rsq_angFz_torso_st] = regressIterNew(temp.TFz,-m);    
                     
-                    temp = [];
+                    clear m;                     
+                    m = [abs(alphaTorsoFilt) abs(wTorsoFilt) abs(angTorsoFilt-ref) ones(size(temp.Tint))]; % Use abs values of state b/c logic is that mag of interact torque increases as deviation from vertical position and zero speed/acc increases
+                    [c_angInt_torso,rsq_angInt_torso,p_angInt_torso,c_angInt_torso_st,rsq_angInt_torso_st] = regressIterNew(temp.Tint,-m);                        
+                    
                     %% Get POB RASI marker to calculate AP velocity of whole body 
                     RASIFilty = filtfilt(sos, g, Markers.POB.RASI(start_idx:stop_idx,2))./1000; % (m)
                     % Store pos for later analysis/plotting
@@ -762,7 +797,6 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     TrialData(n).Results.rsqx_IP = nan; %
                     TrialData(n).Results.px_IP = nan; %
                     
-                    TrialData(n).Results.IntPower = nan;
                     TrialData(n).Results.IntCumWork = nan;
                     
                     TrialData(n).Results.corrPowerFresLagX = nan;
@@ -777,6 +811,15 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     TrialData(n).Results.cz_torso_st = nan; % regression coeff's
                     TrialData(n).Results.rsqz_torso_st = nan; %
                     
+                    % 2D vector xz dir
+                    TrialData(n).Results.FxzNorm = nan;
+                    TrialData(n).Results.theta = nan;
+                    TrialData(n).Results.cxz_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsqxz_torso = nan; %
+                    TrialData(n).Results.pxz_torso = nan; %
+                    TrialData(n).Results.cxz_torso_st = nan; % regression coeff's
+                    TrialData(n).Results.rsqxz_torso_st = nan; %
+                    
                     % Power
                     TrialData(n).Results.IntPower = nan; % x dir
                     TrialData(n).Results.IntPowerXZ = nan; % 2D
@@ -788,14 +831,29 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                     % with nan's
                     TrialData(n).Results.TyTorso = nan;
                     TrialData(n).Results.TyGd = nan;
+                    TrialData(n).Results.Tg = nan;
                     TrialData(n).Results.TyExt = nan;
-                    TrialData(n).Results.TyGdXhZh = nan;
-                    TrialData(n).Results.TyGdXlZh = nan;
-                    TrialData(n).Results.TyGdXhZl = nan;
-                    TrialData(n).Results.TyGdXlZl = nan;
+                    TrialData(n).Results.TyInt = nan;
+                    TrialData(n).Results.TyIntXhZh = nan;
+                    TrialData(n).Results.TyIntXlZh = nan;
+                    TrialData(n).Results.TyIntXhZl = nan;
+                    TrialData(n).Results.TyIntXlZl = nan;
+                    TrialData(n).Results.TyFxh = nan;
+                    TrialData(n).Results.TyFxl = nan;
+                    TrialData(n).Results.TyFzh = nan;
+                    TrialData(n).Results.TyFzl = nan;
                     TrialData(n).Results.c_ang_torso = nan; % regression coeff's
                     TrialData(n).Results.rsq_ang_torso = nan; % rsquare
                     TrialData(n).Results.p_ang_torso = nan; % p-value
+                    TrialData(n).Results.c_angFx_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsq_angFx_torso = nan; % rsquare
+                    TrialData(n).Results.p_angFx_torso = nan; % p-value
+                    TrialData(n).Results.c_angFz_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsq_angFz_torso = nan; % rsquare
+                    TrialData(n).Results.p_angFz_torso = nan; % p-value
+                    TrialData(n).Results.c_angInt_torso = nan; % regression coeff's
+                    TrialData(n).Results.rsq_angInt_torso = nan; % rsquare
+                    TrialData(n).Results.p_angInt_torso = nan; % p-value
                     TrialData(n).Results.angP = nan;
                     TrialData(n).Results.lagTyAngTorso = nan;
                     TrialData(n).Results.xcorrTyAngTorso = nan;
@@ -843,11 +901,29 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                         TrialData(n).Results.rsqz_torso = rsqz_torso; % rsquare
                         TrialData(n).Results.pz_torso = pz_torso; % p-value
                         
+                        % 2D vector xz dir
+                        TrialData(n).Results.FxzNorm = Fmag;
+                        TrialData(n).Results.theta = theta;
+                        TrialData(n).Results.cxz_torso = cxz_torso; % regression coeff's
+                        TrialData(n).Results.rsqxz_torso = rsqxz_torso; %
+                        TrialData(n).Results.pxz_torso = pxz_torso; %
+                        TrialData(n).Results.cxz_torso_st = cxz_torso_st; % regression coeff's
+                        TrialData(n).Results.rsqxz_torso_st = rsqxz_torso_st; %
+                        
                         % Angular
                         TrialData(n).Results.c_ang_torso = c_ang_torso; % regression coeff's
                         TrialData(n).Results.rsq_ang_torso = rsq_ang_torso; % rsquare
                         TrialData(n).Results.p_ang_torso = p_ang_torso; % p-value
-                        
+                        TrialData(n).Results.c_angFx_torso = c_angFx_torso; % regression coeff's
+                        TrialData(n).Results.rsq_angFx_torso = rsq_angFx_torso; % rsquare
+                        TrialData(n).Results.p_angFx_torso = p_angFx_torso; % p-value
+                        TrialData(n).Results.c_angFz_torso = c_angFz_torso; % regression coeff's
+                        TrialData(n).Results.rsq_angFz_torso = rsq_angFz_torso; % rsquare
+                        TrialData(n).Results.p_angFz_torso = p_angFz_torso; % p-value
+                        TrialData(n).Results.c_angInt_torso = c_angInt_torso; % regression coeff's
+                        TrialData(n).Results.rsq_angInt_torso = rsq_angInt_torso; % rsquare
+                        TrialData(n).Results.p_angInt_torso = p_angInt_torso; % p-value
+                                                
                         % Power
                         TrialData(n).Results.IntPower = IP_power; % x dir
                         TrialData(n).Results.IntPowerXZ = IP_power_XZ; % 2D
@@ -1052,6 +1128,97 @@ function [TrialData] = mainWorkPowerAnalysisMW(inputData,subj,plotCheck)
                 title(titlename);
 
                 xlabel('Time (s)');
+            elseif plotCheck == 6 & any(strcmpi(TrialData(n).Info.Condition,{'Assist Ground','Assist Beam','Assist beam'})) & ~isnan(TrialData(n).Results.Force)
+                firstPlot = firstPlot + 1;
+                if firstPlot == 1
+                    fx = figure; fz = figure; ty_fx = figure; ty_fz = figure; ty_int = figure;
+                end
+                plotind = plotind + 1;
+                % Fx
+                figure(fx);
+                subplot(numrows,numcols,plotind)
+                histogram(TrialData(n).Results.Force(:,1),'Normalization','probability');
+                set(gca,'tickdir','out','box','off');
+                if mod(plotind,numcols)==1
+                    ylabel('Probability')
+                end
+                if plotind > 15
+                    xlabel('Fx (N)');
+                end
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+                % Fz
+                figure(fz);
+                subplot(numrows,numcols,plotind)
+                histogram(TrialData(n).Results.Force(:,3),'Normalization','probability');
+                set(gca,'tickdir','out','box','off');
+                if mod(plotind,numcols)==1
+                    ylabel('Probability')
+                end
+                if plotind > 15
+                    xlabel('Fz (N)');
+                end
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+                % Ty_Fx
+                figure(ty_fx);
+                subplot(numrows,numcols,plotind)
+                histogram(TrialData(n).Results.TyFx,'Normalization','probability');
+                set(gca,'tickdir','out','box','off');
+                if mod(plotind,numcols)==1
+                    ylabel('Probability')
+                end
+                if plotind > 15
+                    xlabel('TyFx (Nm)');
+                end
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+                % Ty_Fz
+                figure(ty_fz);
+                subplot(numrows,numcols,plotind)
+                histogram(TrialData(n).Results.TyFz,'Normalization','probability');
+                set(gca,'tickdir','out','box','off');
+                if mod(plotind,numcols)==1
+                    ylabel('Probability')
+                end
+                if plotind > 15
+                    xlabel('TyFz (Nm)');
+                end
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
+                % Ty_Int
+                figure(ty_int);
+                subplot(numrows,numcols,plotind)
+                histogram(TrialData(n).Results.TyInt,'Normalization','probability');
+                set(gca,'tickdir','out','box','off');
+                if mod(plotind,numcols)==1
+                    ylabel('Probability')
+                end
+                if plotind > 15
+                    xlabel('TyInt (Nm)');
+                end
+                if plotind == 1 
+                    titlename = sprintf('HHI%i %s %s',subj,TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                else
+                    titlename = sprintf('%s %s',TrialData(n).Info.Trial,TrialData(n).Info.Condition);
+                end
+                title(titlename);
             end
                 
             % RESULTS FOR ALL TRIALS

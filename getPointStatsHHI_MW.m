@@ -34,16 +34,22 @@ varNames = {'Subject','TrialNumber','Type',...
     'meanIPpowerX','meanIPpowerZ','meanIPpowerXZ','meanPOBpowerX','meanPOBpowerZ','meanPOBpowerXZ',... % mean of signed power at IP
     'SDIPpowerX','SDIPpowerZ','SDIPpowerXZ','SDPOBpowerX','SDPOBpowerZ','SDPOBpowerXZ',... % SD of signed power, similar to an RMS but not have sign issues 
     'meanTheta','SDTheta',... % Angle of force in XZ plane
-    'mx_torso','bx_torso','kx_torso','Rsqx_torso',...% regression coeff's and fit of POB torso marker acc, vel, pos to force in lateral dir, with and without lag
+    'mx_torso','bx_torso','kx_torso','Rsqx_torso',...% regression coeff's and fit of POB torso marker acc, vel, pos to force in lateral dir
     'mz_torso','bz_torso','kz_torso','Rsqz_torso',...% regression coeff's and R^2 of POB torso marker acc, vel, pos to force in vert dir
+    'mxz_torso','bxz_torso','kxz_torso','Rsqxz_torso',...% regression coeff's and fit of POB torso marker acc, vel, pos to force vector
     'meanArmPOBX','SDarmPOBX'... % Magnitude of vector
     'StdSway','Dist','AvgSpeed',...% Other kinem metrics
     'meanLy','SDLy',... % Angular momentum mean and SD
-    'meanTyGd','meanRMSTyGd','SDTyGd',... % mean and SD torque
+    'meanTyGd','meanTg','meanTyInt','meanRMSTyGd','SDTyGd','stats.SDratio',... % mean and SD torque
+    'meanTyFxh','meanTyFxl','meanTyFzh','meanTyFzl',...% worst case drift effects on TyFx and TyFz means (SD doesn't care mean)
+    'SDTyIntXhZh','SDTyIntXlZh','SDTyIntXhZl','SDTyIntXlZl',...% worst case drift effects on Tint
     'meanTyFx','meanTyFz','SDTyFx','SDTyFz',...% torque components due to Fx and Fz
     'meanW','SDW','meanPang','SDPang',...% SD and signed mean angular vel and power
     'meanPangFx','meanPangFz','SDPangFx','SDPangFz',...% power components due to Fx and Fz
     'm_ang_torso','b_ang_torso','k_ang_torso','rsq_ang_torso',...% regression coeff's of POB torso marker acc, vel, pos to force in lateral dir, with and without lag
+    'm_angFx_torso','b_angFx_torso','k_angFx_torso','rsq_angFx_torso',...% regression coeff's TyFx
+    'm_angFz_torso','b_angFz_torso','k_angFz_torso','rsq_angFz_torso',...% regression coeff's TyFz
+    'm_angInt_torso','b_angInt_torso','k_angInt_torso','rsq_angInt_torso',...% regression coeff's TyInt
     'lagTyAngTorso','xcorrTyAngTorso','lagTyWTorso','xcorrTyWTorso',... % Xcorr Ty to torso ang state
     'Complete','Notes'}; 
 
@@ -103,14 +109,20 @@ blank = {nan,nan,'',...
     nan,nan,... % Angle of force in XZ plane
     nan,nan,nan,nan,...% R^2 and reg coeff's POB in x
     nan,nan,nan,nan,... % R^2 and reg coeff's POB in z
+    nan,nan,nan,nan,...% regression coeff's and fit of POB torso marker acc, vel, pos to force vector
     nan,nan,...% POB arm "length" mean and SD in ML dir
     nan,nan,nan,...% other kinem's
     nan,nan,... % Angular momentum mean and SD
-    nan,nan,nan,...% mean and SD torque
+    nan,nan,nan,nan,nan,nan,...% mean and SD torque
+    nan,nan,nan,nan,...% worst case drift effects on TyFx and TyFz
+    nan,nan,nan,nan,...% worst case drift effects on Tint
     nan,nan,nan,nan,...% torque components due to Fx and Fz
     nan,nan,nan,nan,...% SD and mean signed angular vel and power
     nan,nan,nan,nan,...% power components due to Fx and Fz
-    nan,nan,nan,nan,...% regression coeff's of POB torso marker acc, vel, pos to force in lateral dir, with and without lag
+    nan,nan,nan,nan,...% regression coeff's Ty net
+    nan,nan,nan,nan,...% regression coeff's Ty Fx
+    nan,nan,nan,nan,...% regression coeff's Ty Fz
+    nan,nan,nan,nan,...% regression coeff's Ty Int
     nan,nan,nan,nan,...% Xcorr Ty to torso ang state
     true,' '};
 % Filter out the STAT trials
@@ -170,8 +182,8 @@ for n = 1:numTrials
         stats.meanW(n) = nanmean(sqrt(TrialData(n).Results.wTorso.^2));
         stats.SDW(n) = nanstd(sqrt(TrialData(n).Results.wTorso.^2));
         
-        stats.meanLy(n) = nanmean(sqrt(TrialData(n).Results.Ly.^2));
-        stats.SDLy(n) = nanstd(sqrt(TrialData(n).Results.Ly.^2));
+        stats.meanLy(n) = nanmean(sqrt(TrialData(n).Results.Ly.^2)); % RMS mean
+        stats.SDLy(n) = nanstd(sqrt(TrialData(n).Results.Ly.^2)); % RMS SD
         if any(strcmpi(stats.Type(n),{'Assist Ground','Assist Beam'}))
             %% For Assisted trials, we must calculate peak work, power, and
             % force, and add it to the stats table
@@ -230,15 +242,10 @@ for n = 1:numTrials
                 end
                 
                 % 2D vector force
-                clear Fmag theta
-                for i = 1:length(force(:,1))
-                    Fmag(i) = norm(force(i,[1 3]));
-                    theta(i) = atan2(force(i,3),force(i,1));
-                end
-                stats.meanFxz(n) = nanmean(Fmag);
-                stats.SDFxz(n) = nanstd(Fmag);
-                stats.meanTheta(n) = nanmean(theta);
-                stats.SDTheta(n) = nanstd(theta);
+                stats.meanFxz(n) = nanmean(TrialData(n).Results.FxzNorm);
+                stats.SDFxz(n) = nanstd(TrialData(n).Results.FxzNorm);
+                stats.meanTheta(n) = nanmean(TrialData(n).Results.theta);
+                stats.SDTheta(n) = nanstd(TrialData(n).Results.theta);
     %             stats.PeakNegFx(n) = mean(PkNegFx);
                 % X dir
     %             % Seems arbitrary to pick what counts as a peak and to divide
@@ -349,12 +356,28 @@ for n = 1:numTrials
                 stats.meanTyGd(n) = nanmean(TrialData(n).Results.TyGd); % Signed mean
                 stats.meanRMSTyGd(n) = nanmean(sqrt(TrialData(n).Results.TyGd.^2)); % RMS mean to use to compare other studies
                 stats.SDTyGd(n) = nanstd(TrialData(n).Results.TyGd); 
+                stats.meanTg(n) = nanmean(TrialData(n).Results.Tg); % Signed mean
+                stats.SDTg(n) = nanstd(TrialData(n).Results.Tg); 
 %                 stats.meanTorqueYTorso(n) = nanmean(sqrt(TrialData(n).Results.TyTorso.^2));
 %                 stats.SDTorqueYTorso(n) = nanstd(sqrt(TrialData(n).Results.TyTorso.^2));
                 stats.meanTyFx(n) = nanmean(TrialData(n).Results.TyFx); % Signed mean
                 stats.SDTyFx(n) = nanstd(TrialData(n).Results.TyFx); 
                 stats.meanTyFz(n) = nanmean(TrialData(n).Results.TyFz); % Signed mean
                 stats.SDTyFz(n) = nanstd(TrialData(n).Results.TyFz); 
+                stats.meanTyInt(n) = nanmean(TrialData(n).Results.TyInt); 
+                stats.SDTyInt(n) = nanstd(TrialData(n).Results.TyInt); 
+%                 % Ratio of Tint to Tnet, care magnitude (SD) only
+%                 stats.SDratio(n) = stats.SDTyInt(n)/(stats.SDTyFx(n) + stats.SDTyFz(n));
+                % Worst case drift on TyFx and TyFz
+                stats.meanTyFxh(n) = nanmean(TrialData(n).Results.TyFxh); 
+                stats.meanTyFxl(n) = nanmean(TrialData(n).Results.TyFxl);
+                stats.meanTyFzh(n) = nanmean(TrialData(n).Results.TyFzh); 
+                stats.meanTyFzl(n) = nanmean(TrialData(n).Results.TyFzl);
+                % Worsy case drift on TyInt
+                stats.SDTyIntXhZh(n) = nanstd(TrialData(n).Results.TyIntXhZh); 
+                stats.SDTyIntXlZh(n) = nanstd(TrialData(n).Results.TyIntXlZh); 
+                stats.SDTyIntXhZl(n) = nanstd(TrialData(n).Results.TyIntXhZl); 
+                stats.SDTyIntXlZl(n) = nanstd(TrialData(n).Results.TyIntXlZl);                 
                                 
                 %% Angular power
                 stats.meanPang(n) = nanmean(TrialData(n).Results.angP); % signed
@@ -413,13 +436,37 @@ for n = 1:numTrials
                     stats.kz_torso(n) = TrialData(n).Results.cz_torso(3);
                     stats.Rsqz_torso(n) = TrialData(n).Results.rsqz_torso;
                 end
+
+                % 2D vector xz dir
+                if TrialData(n).Results.pxz_torso < 0.05 % if fit is sig.
+                    stats.mxz_torso(n) = TrialData(n).Results.cxz_torso(1);
+                    stats.bxz_torso(n) = TrialData(n).Results.cxz_torso(2);
+                    stats.kxz_torso(n) = TrialData(n).Results.cxz_torso(3);
+                    stats.Rsqxz_torso(n) = TrialData(n).Results.rsqxz_torso;
+                end
                 
                 % Angular
                 if TrialData(n).Results.p_ang_torso < 0.05 % if fit is sig.
+                    % Ty net
                     stats.m_ang_torso(n) = TrialData(n).Results.c_ang_torso(1);
                     stats.b_ang_torso(n) = TrialData(n).Results.c_ang_torso(2);
                     stats.k_ang_torso(n) = TrialData(n).Results.c_ang_torso(3);
                     stats.Rsq_ang_torso(n) = TrialData(n).Results.rsq_ang_torso;
+                    % TyFx
+                    stats.m_angFx_torso(n) = TrialData(n).Results.c_angFx_torso(1);
+                    stats.b_angFx_torso(n) = TrialData(n).Results.c_angFx_torso(2);
+                    stats.k_angFx_torso(n) = TrialData(n).Results.c_angFx_torso(3);
+                    stats.Rsq_angFx_torso(n) = TrialData(n).Results.rsq_angFx_torso;
+                    % TyFz
+                    stats.m_angFz_torso(n) = TrialData(n).Results.c_angFz_torso(1);
+                    stats.b_angFz_torso(n) = TrialData(n).Results.c_angFz_torso(2);
+                    stats.k_angFz_torso(n) = TrialData(n).Results.c_angFz_torso(3);
+                    stats.Rsq_angFz_torso(n) = TrialData(n).Results.rsq_angFz_torso;
+                    % TyInt
+                    stats.m_angInt_torso(n) = TrialData(n).Results.c_angInt_torso(1);
+                    stats.b_angInt_torso(n) = TrialData(n).Results.c_angInt_torso(2);
+                    stats.k_angInt_torso(n) = TrialData(n).Results.c_angInt_torso(3);
+                    stats.Rsq_angInt_torso(n) = TrialData(n).Results.rsq_angInt_torso;
                 end
 
                 %% Correlation of power to regression residual
