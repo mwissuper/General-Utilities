@@ -26,7 +26,7 @@ for i = 1:length(ind2) % for number of nan gaps
         x_filt(ind1:ind2(i)) = filtfilt(B,A,x(ind1:ind2(i)));
     else
         msg = sprintf('gap too short for filter order %i',order);
-        disp(msg);
+%         disp(msg);
     end
     indStop = find(indNan(ind2(i)+1:end)==0,1,'first')+ind2(i)-1; % find end of this gap, the last NaN value in gap. 
     ind1 = indStop+1; % to use for next loop

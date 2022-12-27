@@ -43,9 +43,9 @@ if subj == 6  % special cases, need to find all the steps using custom code
     elseif trial == 42 && side == 2
         indP = [72 indP];
         p = [v(72); p];
-    elseif trial == 45 && side == 2
-        indP = [86 indP];
-        p = [v(86); p];
+%     elseif trial == 45 && side == 2
+%         indP = [86 indP];
+%         p = [v(86); p];
     elseif trial == 47 
         if side == 1
             indP(2:3) = [];
