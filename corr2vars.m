@@ -1,8 +1,7 @@
 function [p, r, test] = corr2vars(v1,v2)
 
-% Test normality, then use t-test or sign-rank test compare 2 paired
+% Test normality, then use Pearson's or non-parametric Spearman's test to compare 2 paired
 % samples
-% Two-tailed t-test
 [Hl,P1] = lillietest(v1); % First test if distrib is normal so know which test to use next
 [H2,P2] = lillietest(v2); % First test if distrib is normal so know which test to use next
 % corr doesn't tolerate nan's, so remove those rows
