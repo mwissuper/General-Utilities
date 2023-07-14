@@ -1,16 +1,17 @@
 function [c, rsq, p, b_st, rsq_st] = regressIterNew(y,x)
 
-% y is nx1 dependent variable and x is nx4 matrix of predictors
+% y is nx1 dependent variable and x is nxm matrix of predictors
 % Regress iteratively if CI of coeff includes zero
 % and remove the predictor from the model. Update output c with zero for
 % the removed predictor and update rsq for model.
 
 % Use z to calculate standardized coefficients so can compare their
 % relative importance to each other
-for i = 1:3
+s = size(x);
+for i = 1:s(2)-1
     z(:,i) = zscore(x(:,i));
 end
-z(:,4) = x(:,4); % ones
+z(:,i+1) = x(:,end); % ones
 
 % Calculate unstandardized coeff's so they have meaningful physics units
 % for mass, damping, stiffness
@@ -34,7 +35,7 @@ if ~isempty(ind)
 end
 n = 0;
 flag = 0;
-while ~isempty(ind) && length(ind) < 3 && flag == 0 % Keep doing if there are n.s. predictors and 1 or more sig. predictors
+while ~isempty(ind) && length(ind) < s(1) && flag == 0 % Keep doing if there are n.s. predictors and 1 or more sig. predictors
     n = n + 1;
 
     [b,bint,r,rint,stats] = regress(y,x); 

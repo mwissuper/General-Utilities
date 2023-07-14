@@ -1,6 +1,6 @@
 function STarray = calcST(indHS1,indHS2,fs)
 
-% Find array of times between indHS events. indHS1 is for one limb side,
+% Find array of times between HS events. indHS1 is for one limb side,
 % indHS2 is for other side. Loop through all indHS1 events and find
 % preceding HS2 event
 
