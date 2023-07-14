@@ -9,6 +9,6 @@ end
 if pval(2) < 0.05
     sigstar({[2 3]});
 end
-if pval(2) < 0.05
+if pval(3) < 0.05
     sigstar({[1 3]});
 end

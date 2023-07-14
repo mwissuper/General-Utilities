@@ -1,5 +1,4 @@
-% Find lag as delay that results in max xcorr. Do not allow anticorr as
-% data is cyclic
+% Find lag as delay that results in max xcorr. Allow anticorr 
 
 function [m, curlag] = xcorrLagAC(x,y,maxlag)
 
