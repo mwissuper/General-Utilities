@@ -1,9 +1,6 @@
-function markerName = findMarkerIndCsv(headerCell)
+function markerNames = findMarkerNamesCSV(headerCell)
 
-% Take input string s of name of marker and find which index it is in
-% header.
-
-% Separate all markers from string in cell using ",,,"
+% All markers in cell delimited by ",,,"
 
 % First 2 cols of data are for frame and subframe, then x,y,z coord's for
 % each marker in order of names of markers in cell
