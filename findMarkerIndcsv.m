@@ -1,26 +1,16 @@
-function markerName = findMarkerIndCsv(headerCell)
+function ind = findMarkerIndCsv(markerNames,s)
 
-% Take input string s of name of marker and find which index it is in
-% header.
+% Find csv data index corresponding to marker names 's' using an array of
+% markerNames
 
-% Separate all markers from string in cell using ",,,"
-
-% First 2 cols of data are for frame and subframe, then x,y,z coord's for
-% each marker in order of names of markers in cell
-indSep = strfind(headerCell,',,,');
-for i = 1:length(indSep)+1
-    if i == length(indSep)+1
-        curInd = length(indSep);
-    else
-        curInd = indSep(i);
-    end
-    if i == 1
-    	beg = strfind(headerCell(1:curInd),':');
-        markerName{i} = headerCell((beg+1):(curInd-1));
-    else
-        beg = strfind(headerCell(lastInd:curInd),':') + lastInd - 1;
-    end
-    lastInd = curInd;
-    markerName{i} = headerCell((beg+1):(curInd-1));
+for j = 1:length(markerNames)
+    idx(j) = strcmp(markerNames(j,:),s);
 end
-   
+temp = find(idx == 1,1,'first');  
+if ~isempty(temp) 
+    ind = 2+(temp-1)*3+1; % 1st 2 cols of data are not marker data, then x, y, z components of marker
+else
+    ind = nan;
+    msg = sprintf('%s not present',s);
+    disp(msg);
+end

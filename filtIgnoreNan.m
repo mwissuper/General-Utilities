@@ -8,6 +8,7 @@ function x_filt = filtIgnoreNan(B,A,order,x)
 % Find all beginnings of gaps
 offset = x(2:end);
 indNan = isnan(x);
+indStop = [];
 if isnan(x(1)) == 1 % If start with gap
     ind2(1) = 1;
     temp = find(indNan(1:end-1)==0 & isnan(offset)==1); % index before first nan element of gap
@@ -18,7 +19,6 @@ end
 
 x_filt = x;
 ind1 = 1;
-indStop = [];
 for i = 1:length(ind2) % for number of nan gaps
 %     ind1 = ind1
 %     temp = ind2(i)
