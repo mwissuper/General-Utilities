@@ -7,7 +7,7 @@ function markerNames = findMarkerNamesCsv(headerCell)
 % each marker in order of names of markers in cell
 
 indSep = strfind(headerCell,',,,');
-for i = 1:length(indSep)
+for i = 1:length(indSep)+1
     if i == length(indSep)+1
         curInd = length(headerCell);
     else
@@ -19,6 +19,8 @@ for i = 1:length(indSep)
         beg = strfind(headerCell(lastInd:curInd),':') + lastInd - 1;
     end
     lastInd = curInd;
-    markerNames(i,:) = headerCell((beg+1):(curInd-1));
+    if ~isempty(beg) && length(headerCell((beg+1):(curInd-1))) == 4
+        markerNames(i,:) = headerCell((beg+1):(curInd-1));
+    end
 end
    

@@ -1,12 +1,11 @@
 function indHS = getHS(markerPos)
 
 % markerPos is vertical position of marker during period of interest
-% (walking forward or backward). Often bad data at beg of trial, so skip
-% that period
+% (walking forward or backward).
 
 % Get index of vertical markerPos where HS occurred based on extrema. 
-x = 50:length(markerPos);
-[p,ind] = findpeaks(markerPos(50:end),x,'MinPeakProminence',0.01);
+x = 1:length(markerPos);
+[p,ind] = findpeaks(markerPos,x,'MinPeakProminence',0.01);
 indHS = [];
 % Find minima between peaks
 for i = 2:length(ind)
