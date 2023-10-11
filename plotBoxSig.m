@@ -1,7 +1,7 @@
-function plotBoxSig(plotind,numrows,numcols,m,xticklab,xl,pval)
+function b = plotBoxSig(plotind,numrows,numcols,m,xticklab,xl,pval)
 
 subplot(numrows,numcols,plotind)
-boxplot(m,'colors','k','symbol','o'); hold on;
+b = boxplot(m,'colors','k','symbol','o'); hold on;
 box off,set(gca,'xtick',1:length(xticklab),'xticklabel',xticklab,'xlim',xl)
 if length(pval) == 3
     pmatrix = [1 2;1 3;2 3];

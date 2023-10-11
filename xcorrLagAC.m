@@ -2,9 +2,12 @@
 
 function [m, curlag] = xcorrLagAC(x,y,maxlag)
 
+ % Must remove nan's before do xcorr
+ ix = find(~isnan(x)); iy = find(~isnan(y));
  % Must remove DC before do xcorr
- xdc = x - nanmean(x);
- ydc = y - nanmean(y); 
+ ind = intersect(ix,iy);
+ xdc = x(ind) - nanmean(x);
+ ydc = y(ind) - nanmean(y); 
  if isnan(maxlag)
      [r,lags] = xcorr(xdc,ydc,'normalized'); 
  else
