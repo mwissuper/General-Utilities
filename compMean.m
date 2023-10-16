@@ -11,7 +11,7 @@ if P1 < 0.05
     stat = STATS.signedrank;
     % Also do approximate method to report z val
     [Ptemp,Htemp,STATS] = signrank(a,m,'method','approximate');
-    zval = STATS.zval
+    zval = STATS.zval;
 else
     [H,P0,CI,STATS] = ttest(a,m);
     test = 't test';
