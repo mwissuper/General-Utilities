@@ -13,13 +13,19 @@ for param = 1:2
         data = load(fname); 
         w = data.SF./data.SL; wp = data.fp/data.Lp;
         indU = find(data.condArray(:,1) == indUP);
-%         if length(indU) == 5 && isempty(find(isnan(data.speed(indU))==1,1,'first'))
-%             indU(1) = [];
-%         end
+        if length(indU) == 5 && isempty(find(isnan(data.SF(indU))==1,1,'first'))
+            tf = isoutlier(data.SF(indU));
+            if tf(1) == 1
+                indU(1) = [];
+            end
+        end
         indC = find(data.condArray(:,1) == indP);
-%         if length(indC) == 5 && isempty(find(isnan(data.speed(indC))==1,1,'first'))
-%             indC(1) = [];
-%         end
+        if length(indC) == 5 && isempty(find(isnan(data.SF(indC))==1,1,'first'))
+            tf = isoutlier(data.SF(indC));
+            if tf(1) == 1
+                indC(1) = [];
+            end
+        end
         
         % v         
         subplot(numrows,numcols,(param-1)*numcols+1), hold on;
