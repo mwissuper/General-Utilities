@@ -1,4 +1,7 @@
-function [pv, pvu, pf, pfu, pL, pLu, pw, pwu] = plotCompGait(subj_array,cSubj,indParray,Ulev,pNames,vd,fd,Ld,wd)
+function [pv, pvu, pf, pfu, pL, pLu, pw, pwu] = plotCompGait(subj_array,cSubj,indParray,Ulev,vd,fd,Ld,wd)
+
+% Now code only does 1-tail pairwise comp to check if error in metric
+% improved or not
 
 figure;
 numcols = 4; numrows = 1;
@@ -38,7 +41,7 @@ for isubj = 1:length(subj_array) % Load data once per subj
         else
             errorbar(isubj+0.2,nanmean(data.speed(indP)),nanstd(data.speed(indP)),'^','color',cSubj(isubj,:)); %va
         end        
-        [pv(isubj,param), stat, test, df] = comp2groups(data.speed(indU),data.speed(indP));
+        [pv(isubj,param), stat, test, df] = comp2groups(abs(data.speed(indU)-vd),abs(data.speed(indP)-vd),1);
         if pv(isubj,param) < 0.05
             sigstar({[isubj-0.2 isubj+0.2*(param-1)]});
         end
@@ -56,7 +59,7 @@ for isubj = 1:length(subj_array) % Load data once per subj
         else
             errorbar(isubj+0.2,nanmean(data.SF(indP)),nanstd(data.SF(indP)),'^','color',cSubj(isubj,:));
         end
-        [pf(isubj,param), stat, test, df] = comp2groups(data.SF(indU),data.SF(indP));
+        [pf(isubj,param), stat, test, df] = comp2groups(abs(data.SF(indU)-fd),abs(data.SF(indP)-fd),1);
         if pf(isubj,param) < 0.05
             sigstar({[isubj-0.2 isubj+0.2*(param-1)]});
         end
@@ -66,6 +69,21 @@ for isubj = 1:length(subj_array) % Load data once per subj
             ylabel('f (hz)'),xlabel('Subj');
         end
         
+        % Calculate mean, SD, and corr between matched pairs for power
+        % analysis
+        m(isubj,param,:) = [nanmean(abs(data.SF(indU)-fd)) nanmean(abs(data.SF(indP)-fd))];
+        SD(isubj,param,:) = [nanstd(abs(data.SF(indU)-fd)) nanstd(abs(data.SF(indP)-fd))];
+        if length(indU) ~= length(indP) % remove first trial of other vector so vectors match in length
+            if length(indU) < length(indP)
+                a = data.SF(indU); b = data.SF(indP(2:end));
+            else
+                a = data.SF(indU(2:end)); b = data.SF(indP);
+            end
+        else
+            a = data.SF(indU); b = data.SF(indP);
+        end
+        r(isubj,param,:) = corr(a,b);
+        testArray{isubj,param,:} = test;
 %         % SrT        
 %         subplot(numrows,numcols,(param-1)*numcols+3), hold on;
 %         errorbar(isubj-0.2,nanmean(data.SrT(indU)),nanstd(data.SrT(indU)),'o','color',cSubj(isubj,:));
@@ -90,7 +108,7 @@ for isubj = 1:length(subj_array) % Load data once per subj
         else
             errorbar(isubj+0.2,nanmean(data.SL(indP)),nanstd(data.SL(indP)),'^','color',cSubj(isubj,:));
         end
-        [pL(isubj,param), stat, test, df] = comp2groups(data.SL(indU),data.SL(indP));
+        [pL(isubj,param), stat, test, df] = comp2groups(abs(data.SL(indU)-Ld),abs(data.SL(indP)-Ld),1);
         if pL(isubj,param) < 0.05
             sigstar({[isubj-0.2 isubj+0.2*(param-1)]});
         end
@@ -108,7 +126,7 @@ for isubj = 1:length(subj_array) % Load data once per subj
         else
             errorbar(isubj+0.2,nanmean(w(indP)),nanstd(w(indP)),'^','color',cSubj(isubj,:));
         end
-        [pw(isubj,param), stat, test, df] = comp2groups(w(indU),w(indP));
+        [pw(isubj,param), stat, test, df] = comp2groups(abs(w(indU)-wd),abs(w(indP)-wd),1);
         if pw(isubj,param) < 0.05
             sigstar({[isubj-0.2 isubj+0.2*(param-1)]});
         end
