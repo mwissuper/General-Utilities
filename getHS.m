@@ -15,9 +15,10 @@ for i = 2:length(ind)
 end
 
 % For last step, look for min between last peak and end of time
-% period of interest
+% period of interest. This doesn't work if data is cut off before reach stillness
+% Why do I need this last step past the last peak?
 [m(i),temp] = min(markerPos(ind(i):end));
 indHS(i) = temp + ind(i) - 1;
 
-% plot(markerPos);hold on,plot(indHS,m,'x'),plot(ind,p,'o');
+% plot(markerPos);hold on,plot(indHS,m,'x'),plot(ind',p,'o');
 
