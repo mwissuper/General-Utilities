@@ -18,7 +18,7 @@ function [m, curlag] = xcorrLag(x,y,maxlag)
  [m,imax] = max(r);
  curlag = lags(imax);
 
- if m < 0 % anti-correlation, can't use data
+ if m < 0 % all r are < 0
     m = nan;
     curlag = nan;
  end
