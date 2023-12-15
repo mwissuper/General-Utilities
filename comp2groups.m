@@ -7,7 +7,7 @@ if dir == 0
 elseif dir == 1
     tail = 'right';
 else
-    tail = 'two';
+    tail = 'both';
 end
 
 [Hl,P1] = lillietest(m1); % First test if distrib is normal so know which test to use next
