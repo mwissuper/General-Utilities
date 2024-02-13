@@ -1,25 +1,26 @@
-function [resp,pU,pP] = findRespUnbal(dv,v1names,v1ind)
+function [resp,pU,pP] = findRespUnbal(DV,IVnd)
 % Multi-step stats tests to determine if subj responds to pulses
-% factor 1 names/levels encoded in v1names and 
-% dv: dependent var matrix, v1ind: col's of dv corresponding to levels of
-% factor 1
+% Unbalanced design so can't compare unpulsed vs pulsed directly
+% dv: dependent var matrix; row = trial, col = level of factor
+% v1ind: struct where each cell of v1ind contains indices of columns of dv matrix that correspond to each indep var.
 % Assumes different num levels for U as P condition, so can't do 2-way
 % REMANOVA
 
-%% 1-way REMANOVA to determine if w is constant in unpulsed. Assume 3 levels for unpulsed.
-[sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(dv(:,v1ind{1}));
+[sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(DV(:,IVnd{1})); % 1-way REMANOVA to determine if w is constant in unpulsed (IV 1). Assume 3 levels for unpulsed.
 pU = pRA;
-if pU >= 0.05
-    % 1-way REMANOVA to dtermine if w is constant in pulsed.
-    [sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(dv(:,v1ind{2}));
-    pP = pRA;
+[sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(DV(:,IVnd{2})); % 1-way REMANOVA to determine if w is constant in pulsed (IV 2).
+pP = pRA;
+if pU >= 0.05 % w is constant across speeds in unpulsed    
     if pP < 0.05
         resp = 1;
     else
         resp = 0;
     end
-else
-    pP = nan;
-    resp = nan;
+else 
+    if pP < 0.05
+        resp = nan; % both unpulsed and pulsed show changes in w, can'
+    else
+        resp = 0;
+    end
 end
 

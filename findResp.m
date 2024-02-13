@@ -1,25 +1,26 @@
-function [resp,pU,pP,pUP,pInt] = findResp(dv,v1names,v2names,v1ind)
+function [resp,pU,pP,pUP,pph_P,pInt] = findResp(dv,v1names,v2names,v1ind)
 % Multi-step stats tests to determine if subj responds to pulses
 % factor 1 names/levels encoded in v1names and 
 % factor 2 names/levels encoded in v2names. 
 % dv: dependent var matrix, v1ind: col's of dv 
-% that correspond to each level of v1
+% that correspond to each level of v1names
+% Use this code for uninstructed participants where velocity and pulse freq
+% vary together. v1names for unpulsed levels. v2names for pulsed levels
 
 %% 1-way REMANOVA to determine if w is constant in unpulsed
 [sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(dv(:,v1ind{1}));
 pU = pRA;
-if pU >= 0.05
+if pU >= 0.05 % w is constant in unpulsed
     pUP = nan; pInt = nan;
     % 1-way REMANOVA to dtermine if w is constant in pulsed
     [sph_p,ranovatbl,pRA,F,df1,df2,posthoctbl,pph] = run_ranova_3lev(dv(:,v1ind{2}));
-    pP = pRA;
+    pP = pRA; pph_P = pph;
     if pP < 0.05
         resp = 1;
     else
         resp = 0;
     end
-else
-    pP = nan;
+else % w varies in unpulsed
     %% 2-way REMANOVA
     % create table for ranova
     c1 = []; c2 = []; c3 = [];
@@ -54,33 +55,26 @@ else
 
     pUP = AT.pValue(2); pV2 = AT.pValue(3); pInt = AT.pValue(4);
     
-    if pInt < 0.05
-        resp = 1;
-    else
-        if pUP < 0.05 % Also check main effect
+    %%
+    if pInt < 0.05 % sig interaction of pulsed/unpulsed and velocity level
+        resp = 1; 
+        pP = nan; pph_P = nan;
+        %%  Sig interaction pulse and level, check at each level whether pulse vs unpulsed are sig diff
+        if pInt < 0 
+            posthoctbl =
+            multcompare(rm,'Pulse:Level','ComparisonType','bonferroni'); % can't
+            use this code
+            pphInt = posthoctbl.pValue([1 2 4]); % Extract out p12, p13, p23
+        else
+            pphInt = nan*ones(3,1);
+        end
+    else % no sig interaction, check main effect of pulsed/unpulsed
+        if pUP < 0.05 
             resp = 1;
         else
             resp = 0;
+            pP = nan; pph_P = nan;
         end
     end
-
-%     %% Sig diff between levels. Follow up with 1-way REMANOVA of level for unpulsed condition
-%     % --> need to work on this code
-%     if pV2 < 0.05
-%         posthoctbl = multcompare(rm,'Level','ComparisonType','bonferroni'); % This compares across 
-%         pphV2 = posthoctbl.pValue([1 2 4]); % Extract out p12, p13, p23
-%     else
-%         pphV2 = nan*ones(3,1);
-%     end
-% 
-%     %%  Sig interaction pulse and level, check  at each level whether pulse vs unpulsed are sig diff
-%     if pInt < 0 
-%     %     posthoctbl =
-%     %     multcompare(rm,'Pulse:Level','ComparisonType','bonferroni'); % can't
-%     %     use this code
-%         pphInt = posthoctbl.pValue([1 2 4]); % Extract out p12, p13, p23
-%     else
-%         pphInt = nan*ones(3,1);
-%     end
 end
 

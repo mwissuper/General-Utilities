@@ -1,5 +1,7 @@
 function b = plotBoxSig(plotind,numrows,numcols,m,xticklab,xl,pval)
-
+% Generate boxplots and indicate sig diff paris with starts
+% m: matrix of dependent variable with rows for participants and columns
+% for conditions
 subplot(numrows,numcols,plotind)
 b = boxplot(m,'colors','k','symbol','o'); hold on;
 box off,set(gca,'xtick',1:length(xticklab),'xticklabel',xticklab,'xlim',xl)
